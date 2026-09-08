@@ -61,6 +61,9 @@ jobs:
           THINKING: ${{ vars.AI_THINKING || '' }}
           PI_TIMEOUT_MS: "1500000"
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # Fallback token used only for PR creation when the org blocks the
+          # automatic GITHUB_TOKEN from creating PRs (see runner/src/github.ts).
+          EASYGH_PR_TOKEN: ${{ secrets.EASYGH_PR_TOKEN }}
         run: node agent-runner/src/main.ts
 
       - name: Upload run logs (always)

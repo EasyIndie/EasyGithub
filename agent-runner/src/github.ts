@@ -69,9 +69,15 @@ export function commentFromFile(repo: string, number: number, bodyFile: string):
 }
 
 export function createPr(repo: string, opts: { base: string; head: string; title: string; bodyFile: string }): PrInfo {
+  // PR creation may be blocked for the automatic GITHUB_TOKEN by an org policy
+  // ("Allow GitHub Actions to create and approve pull requests"). A personal
+  // token (EASYGH_PR_TOKEN) is not subject to that restriction; use it when set.
+  const env = { ...process.env };
+  if (process.env.EASYGH_PR_TOKEN) env.GH_TOKEN = process.env.EASYGH_PR_TOKEN;
   const res = runSync(
     "gh",
     ["pr", "create", "-R", repo, "--base", opts.base, "--head", opts.head, "--title", opts.title, "--body-file", opts.bodyFile],
+    { env },
   );
   if (res.status === 0) {
     const m = /pull\/(\d+)/.exec(res.stdout);
@@ -80,7 +86,8 @@ export function createPr(repo: string, opts: { base: string; head: string; title
     }
   }
   // Fallback: PR may already exist for this head branch.
-  const list = gh(["pr", "list", "-R", repo, "--head", opts.head, "--state", "open", "--json", "number,url", "--jq", ".[0]"]);
+  const listRes = runSync("gh", ["pr", "list", "-R", repo, "--head", opts.head, "--state", "open", "--json", "number,url", "--jq", ".[0]"], { env });
+  const list = listRes.status === 0 ? listRes.stdout : "";
   const found = list.trim() ? (JSON.parse(list) as PrInfo | null) : null;
   if (found?.number) return found;
   throw new Error(`Failed to create PR for ${opts.head}: ${res.stderr.trim()}`);
