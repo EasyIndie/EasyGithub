@@ -1,0 +1,18 @@
+{
+  "name": "easygithub",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI software development pipeline: Issue -> GitHub Actions -> Agent Runner -> Pi -> PR",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "workspaces": [
+    "agent-runner"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspace=agent-runner",
+    "labels": "bash scripts/create-labels.sh",
+    "dev-run": "bash scripts/dev-run.sh"
+  }
+}

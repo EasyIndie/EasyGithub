@@ -1,0 +1,17 @@
+{
+  "name": "@easygithub/agent-runner",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agent Runner: schedules AI coding agents (Pi) against GitHub Issues and turns results into PRs",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
