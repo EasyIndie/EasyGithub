@@ -41,6 +41,10 @@ GitHub Issue #123 ──label: ai──▶ GitHub Actions (ubuntu, Node 24)
 
 - GitHub Actions minutes (free tier or paid) — the job runs a full Pi session, typically several minutes.
 - One provider API key stored as a repo secret: `DEEPSEEK_API_KEY` (DeepSeek V4; see below).
+- Optional secret `EASYGH_PR_TOKEN`: a personal token used **only for PR creation**, needed when your
+  org policy blocks the automatic GITHUB_TOKEN from creating pull requests
+  (*Settings → Actions → General → “Allow GitHub Actions to create and approve pull requests”*).
+  If that org toggle is enabled, the fallback is not needed.
   Repository variables (optional): `AI_MODEL` (default `deepseek-v4-pro`), `AI_THINKING`.
 
 ### Model / provider
