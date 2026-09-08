@@ -11,6 +11,7 @@
     "agent-runner"
   ],
   "scripts": {
+    "check": "npm run typecheck",
     "typecheck": "npm run typecheck --workspace=agent-runner",
     "labels": "bash scripts/create-labels.sh",
     "dev-run": "bash scripts/dev-run.sh"

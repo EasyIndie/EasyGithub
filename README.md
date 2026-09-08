@@ -84,7 +84,7 @@ agent-runner/                    # Agent Runner (TypeScript, zero runtime deps)
 scripts/                         # dev-run.sh, create-labels.sh
 ```
 
-Run `npm run typecheck` before committing. There is no test suite yet.
+Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committing. There is no test suite yet.
 
 ## Status & roadmap
 
