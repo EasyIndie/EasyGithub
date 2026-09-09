@@ -128,6 +128,11 @@ scripts/                         # dev-run.sh, create-labels.sh
 
 Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committing. There is no test suite yet.
 
+## 参考文档
+
+- [多 Agent 启用与模型配置](docs/agents.md)
+- [实时响应方案（事件驱动 vs 轮询）](docs/realtime.md)
+
 ## Status & roadmap
 
 - **V0.1 (done):** single-repo, Pi/DeepSeek, Issue→PR. Verified on this repository (self-hosting).
