@@ -50,7 +50,41 @@ export function listLabels(repo: string, number: number): string[] {
 }
 
 export function addLabel(repo: string, number: number, label: string): void {
-  gh(["issue", "edit", String(number), "-R", repo, "--add-label", label]);
+  try {
+    gh(["issue", "edit", String(number), "-R", repo, "--add-label", label]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Zero-config repos may not have the label yet — create it on the fly.
+    if (/not found|could not find/i.test(msg)) {
+      ensureLabel(repo, label);
+      gh(["issue", "edit", String(number), "-R", repo, "--add-label", label]);
+    } else {
+      throw err;
+    }
+  }
+}
+
+const LABEL_COLORS: Record<string, string> = {
+  ai: "1F6FEB",
+  "ai-running": "DB61A2",
+  "ai-pr": "8250DF",
+  "ai-failed": "B60205",
+  "ai-done": "0E8A16",
+  feature: "C5DEF5",
+  bug: "D73A4A",
+  documentation: "0075CA",
+  "agent:pi": "1F6FEB",
+  "agent:claude": "5319E7",
+  "agent:codex": "BFD4F2",
+};
+
+/** Create a label if it does not exist (used for zero-config repositories). */
+export function ensureLabel(repo: string, label: string): void {
+  const color = LABEL_COLORS[label] ?? "EDEDED";
+  const res = runSync("gh", ["api", `repos/${repo}/labels`, "-X", "POST", "-f", `name=${label}`, "-f", `color=${color}`, "-f", "description=EasyGithub AI pipeline label"]);
+  if (res.status !== 0 && !/already exists/i.test(res.stderr)) {
+    throw new Error(`create label ${label} failed: ${res.stderr.trim().slice(0, 300)}`);
+  }
 }
 
 export function removeLabel(repo: string, number: number, label: string): void {
