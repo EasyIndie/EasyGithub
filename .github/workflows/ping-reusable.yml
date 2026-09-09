@@ -1,0 +1,24 @@
+name: ping-reusable
+
+# Minimal probe: proves that other EasyIndie repositories can call a reusable
+# workflow AND a composite action from this (private) repository, given the
+# repo setting Actions > General > Access = "Accessible from repositories in
+# the EasyIndie organization".
+on:
+  workflow_call:
+    inputs:
+      who:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Composite action from EasyGithub (private)
+        uses: EasyIndie/EasyGithub/.github/actions/ping@main
+      - name: Reusable workflow context
+        run: echo "reusable OK for ${{ github.repository }} / who=${{ inputs.who }} / ref=${{ github.ref }}"
