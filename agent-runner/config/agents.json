@@ -1,0 +1,8 @@
+{
+  "default": "pi",
+  "rules": [
+    { "labels": ["refactor"], "agent": "claude" },
+    { "title": "\\b(codex|gpt)\\b", "agent": "codex" }
+  ],
+  "_comment": "Agent routing for the pipeline. Order matters: first matching rule wins. An issue label `agent:<name>` overrides everything. Available agents: pi, claude, codex (registry.ts). Env var AGENT also overrides."
+}

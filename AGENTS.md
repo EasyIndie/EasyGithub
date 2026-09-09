@@ -4,8 +4,9 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 
 ## Layout
 
-- `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`.
+- `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`.
 - `agent-runner/prompts/` — task templates rendered by the runner (bug-fix / feature / review).
+- `agent-runner/config/agents.json` — agent routing rules.
 - `.github/workflows/ai-agent.yml` — the pipeline workflow.
 - `scripts/` — helper scripts (`dev-run.sh`, `create-labels.sh`).
 
@@ -26,4 +27,4 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 
 ## Labels used by the pipeline
 
-`ai` (trigger), `ai-running`, `ai-pr`, `ai-failed`, `ai-done`.
+`ai` (trigger), `ai-running`, `ai-pr`, `ai-failed`, `ai-done`. Agent override: `agent:<name>` (pi/claude/codex).

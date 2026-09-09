@@ -25,23 +25,35 @@ export function runSync(cmd: string, args: string[], opts: RunOptions = {}): Exe
   return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
 
+export interface RunAsyncOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  /** string written to the child's stdin (then closed) */
+  input?: string;
+  timeoutMs: number;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
+}
+
+export interface RunAsyncResult {
+  ok: boolean;
+  code: number | null;
+  timedOut: boolean;
+  /** set when the process could not be spawned (e.g. binary not found) */
+  error?: string;
+}
+
 /** Async spawn that resolves on exit, capturing stdout/stderr and killing on timeout. */
 export function runAsync(
   cmd: string,
   args: string[],
-  opts: {
-    cwd?: string;
-    env?: NodeJS.ProcessEnv;
-    timeoutMs: number;
-    onStdout?: (chunk: string) => void;
-    onStderr?: (chunk: string) => void;
-  },
-): Promise<{ ok: boolean; code: number | null; timedOut: boolean }> {
+  opts: RunAsyncOptions,
+): Promise<RunAsyncResult> {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [opts.input !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
     });
 
     let stdoutBuf = "";
@@ -59,6 +71,12 @@ export function runAsync(
       opts.onStderr?.(s);
     });
 
+    if (opts.input !== undefined) {
+      child.stdin?.on("error", () => {});
+      child.stdin?.write(opts.input);
+      child.stdin?.end();
+    }
+
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
@@ -67,8 +85,7 @@ export function runAsync(
 
     child.on("error", (err) => {
       clearTimeout(timer);
-      resolve({ ok: false, code: null, timedOut: false });
-      void err;
+      resolve({ ok: false, code: null, timedOut: false, error: err.message });
     });
 
     child.on("close", (code) => {

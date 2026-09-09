@@ -34,8 +34,10 @@ GitHub Issue #123 ──label: ai──▶ GitHub Actions (ubuntu, Node 24)
 | Agent Runner   | scheduling + git + PR orchestration         |
 | Pi             | the only "thinking" part (can be swapped)   |
 
-`agent-runner/src/agents/types.ts` defines `CodingAgent`; `registry.ts` currently registers only
-`pi`, which is the seam for future agents (Claude Code, Codex, OpenClaw/EasyTeam, …).
+`agent-runner/src/agents/types.ts` defines `CodingAgent`; `registry.ts` currently registers
+`pi`, `claude`, and `codex` behind the same interface — the seam for swapping AI engines.
+Routing: issue label `agent:<name>` > repo variable `AI_AGENT` > rules in
+`agent-runner/config/agents.json` > default `pi`.
 
 ## Requirements / costs
 
@@ -43,7 +45,8 @@ GitHub Issue #123 ──label: ai──▶ GitHub Actions (ubuntu, Node 24)
 - One provider API key stored as a repo secret: `DEEPSEEK_API_KEY` (DeepSeek V4; see below).
   Repository variables (optional): `AI_MODEL` (default `deepseek-v4-pro`), `AI_THINKING`,
   `AI_MAX_ATTEMPTS` (default `3`, verification retries), `VERIFY_CMD` (override the check
-  command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`).
+  command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`),
+  `AI_AGENT` (force a specific agent for every run; default: auto-route).
 - Optional secret `EASYGH_PR_TOKEN`: a personal token used **only for PR creation**, needed when your
   org policy blocks the automatic GITHUB_TOKEN from creating pull requests
   (*Settings → Actions → General → “Allow GitHub Actions to create and approve pull requests”*).
@@ -100,13 +103,12 @@ Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committi
 ## Status & roadmap
 
 - **V0.1 (done):** single-repo, Pi/DeepSeek, Issue→PR. Verified on this repository (self-hosting).
-- **V0.2 (partial):** independent verification + failure auto-retry inside the runner: after the
-  agent finishes, the runner runs the repository's own checks (`npm run check`, or `VERIFY_CMD`)
-  without trusting the agent; on failure the output is fed back to the agent for another attempt
-  (default 3, `AI_MAX_ATTEMPTS`). This is the core of the future “CI failure → AI fixes” loop,
-  implemented in-workflow to dodge the approval gate GitHub applies to bot-created PRs.
-- **V0.2 (next):** more agents (Claude Code / Codex / EasyTeam `dev` team), agent routing, reuse
-  across repos (requires a PAT or GitHub App; `GITHUB_TOKEN` cannot push to other repositories).
+- **V0.2 (done):** multi-agent seam. `registry.ts` registers `pi`, `claude` (Claude Code CLI) and
+  `codex` (Codex CLI) behind the same `CodingAgent` interface. Agent selection precedence:
+  1. issue label `agent:<name>` (per-issue), 2. repo variable `AI_AGENT` (forces all runs),
+  3. rules in `agent-runner/config/agents.json`, 4. default `pi`. Activated with the same
+  verification/retry loop. Pi is E2E-verified; claude/codex adapters need their CLIs + keys in the
+  Actions environment (`claude` + `ANTHROPIC_API_KEY`/`CLAUDE_MODEL`, `codex` + `OPENAI_API_KEY`/`CODEX_MODEL`).
 - **V0.3/V0.4:** PR-CI failure feedback for human PRs (`ci.yml` already runs `npm run check` on
   every PR); GitHub App webhooks, queue/task store, long-running server.
 

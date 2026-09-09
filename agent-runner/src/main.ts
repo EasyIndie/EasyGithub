@@ -4,6 +4,7 @@ import { selectAgent } from "./agents/registry.ts";
 import * as git from "./git.ts";
 import { addLabel, commentFromFile, createPr, getIssue, listLabels, removeLabel, type PrInfo } from "./github.ts";
 import { classifyTask, renderTaskMarkdown } from "./prompt.ts";
+import { routeAgent } from "./router.ts";
 import { runVerify } from "./verify.ts";
 
 const L = {
@@ -81,9 +82,6 @@ async function main(): Promise<void> {
   const issueNumber = Number(requireEnv("ISSUE_NUMBER"));
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) throw new Error(`Bad ISSUE_NUMBER: ${process.env.ISSUE_NUMBER}`);
 
-  const agentName = process.env.AGENT ?? "pi";
-  const provider = process.env.PROVIDER ?? "deepseek";
-  const model = process.env.MODEL ?? "deepseek-v4-pro";
   const thinking = process.env.THINKING?.trim();
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS ?? 25 * 60 * 1000);
   const maxAttempts = intEnv("AI_MAX_ATTEMPTS", 3, 1, 5);
@@ -93,11 +91,7 @@ async function main(): Promise<void> {
   mkdirSync(runDir, { recursive: true });
 
   const branch = `ai/issue-${issueNumber}`;
-  const agent = selectAgent(agentName);
-  const extraArgs = thinking ? ["--thinking", thinking] : [];
-
-  log(`repo=${repo} issue=#${issueNumber} agent=${agent.name} provider=${provider} model=${model} branch=${branch}`);
-  log(`runDir=${runDir} defaultBranch=${defaultBranch} maxAttempts=${maxAttempts} verifyCmd=${process.env.VERIFY_CMD ?? "(auto)"}`);
+  log(`repo=${repo} issue=#${issueNumber} branch=${branch}`);
 
   // --- claim ---------------------------------------------------------------
   const labels = listLabels(repo, issueNumber);
@@ -122,6 +116,17 @@ async function main(): Promise<void> {
     const issue = getIssue(repo, issueNumber);
     const kind = classifyTask(issue);
     log(`issue: ${issue.title} | kind=${kind} | labels=${issue.labels.join(",") || "(none)"}`);
+
+    // --- agent selection: env override > issue label agent:x > rules > default ---
+    const explicitAgent = process.env.AGENT?.trim();
+    const agentName = explicitAgent ? explicitAgent.toLowerCase() : await routeAgent({ labels: issue.labels, title: issue.title });
+    const agent = selectAgent(agentName);
+    const isPi = agentName === "pi";
+    const provider = isPi ? (process.env.PROVIDER ?? "deepseek") : agentName;
+    const model = isPi ? (process.env.MODEL ?? "deepseek-v4-pro") : (process.env[`AI_${agentName.toUpperCase()}_MODEL`]?.trim() ?? "default");
+    const extraArgs = isPi && thinking ? ["--thinking", thinking] : [];
+    log(`agent=${agent.name} provider=${provider} model=${model} (override=${explicitAgent ?? "no"})`);
+    log(`runDir=${runDir} defaultBranch=${defaultBranch} maxAttempts=${maxAttempts} verifyCmd=${process.env.VERIFY_CMD ?? "(auto)"}`);
 
     const meta = {
       repo,
