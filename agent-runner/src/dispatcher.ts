@@ -39,41 +39,47 @@ function ghLines(args: string[]): string[] {
   return gh(args).split("\n").map((s) => s.trim()).filter(Boolean);
 }
 
-function searchCandidates(q: string): Candidate[] {
-  const out = gh(["api", "search/issues", "-f", `q=${q}`, "-f", "per_page=100", "--jq", ".items[] | [.repository_url, .number] | @tsv"]);
-  return out
-    .split("\n")
-    .map((line) => {
-      const [url, num] = line.trim().split("\t");
-      const m = url?.match(/repos\/([^/]+\/[^/]+)$/);
-      if (!m?.[1] || !num) return null;
-      return { repo: m[1], number: Number(num) } as Candidate;
-    })
-    .filter((c): c is Candidate => c !== null);
+function searchCandidates(): Candidate[] {
+  // GitHub App installation tokens CANNOT use the Search API (404), so we
+  // discover via the installation's repositories + per-repo open issues.
+  const set = new Map<string, Candidate>();
+  const maxRepos = intEnv("MAX_REPOS", 40, 1, 200);
+  let repos: string[] = [];
+  try {
+    repos = gh(["api", "/installation/repositories", "--paginate", "-f", "per_page=100", "--jq", ".repositories[].full_name"])
+      .split("\n").map((s) => s.trim()).filter(Boolean);
+  } catch (e) {
+    console.log(`[dispatch] installation repos failed: ${e instanceof Error ? e.message : e}`);
+    return [...set.values()];
+  }
+  const filter = process.env.REPO_FILTER?.split(",").map((s) => s.trim()).filter(Boolean);
+  if (filter?.length) repos = repos.filter((r) => filter.includes(r));
+  repos = repos.slice(0, maxRepos);
+  console.log(`[dispatch] accessible repos: ${repos.length}`);
+
+  for (const repo of repos) {
+    let items: Array<{ n: number; t: string; b: string; l: string[] }> = [];
+    try {
+      const raw = gh(["api", `repos/${repo}/issues`, "-f", "state=open", "--paginate", "-f", "per_page=100", "--jq", "[.[] | select(.pull_request == null) | {n:.number,t:(.title // \"\"),b:(.body // \"\"),l:[.labels[].name]}]"], );
+      items = JSON.parse(raw) as typeof items;
+    } catch (e) {
+      console.log(`[dispatch] issues list failed for ${repo}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
+      continue;
+    }
+    for (const it of items) {
+      const labelHit = it.l.includes("ai");
+      const markerHit = it.t.includes("easygh-ai") || it.b.includes("easygh-ai");
+      if (labelHit || markerHit) set.set(`${repo}#${it.n}`, { repo, number: it.n });
+    }
+  }
+  return [...set.values()];
 }
 
 function candidates(): Candidate[] {
-  const org = process.env.ORG ?? "EasyIndie";
   const set = new Map<string, Candidate>();
   const add = (list: Candidate[]) => list.forEach((c) => set.set(`${c.repo}#${c.number}`, c));
-
-  const labelQ = `org:${org} is:issue is:open label:ai`;
-  const markerQ = `org:${org} is:issue is:open "easygh-ai"`;
-  try {
-    add(searchCandidates(labelQ));
-  } catch (e) {
-    console.log(`[dispatch] label search failed: ${e instanceof Error ? e.message : e}`);
-  }
-  try {
-    add(searchCandidates(markerQ));
-  } catch (e) {
-    console.log(`[dispatch] marker search failed: ${e instanceof Error ? e.message : e}`);
-  }
-
-  const filter = process.env.REPO_FILTER?.split(",").map((s) => s.trim()).filter(Boolean);
-  let out = [...set.values()];
-  if (filter?.length) out = out.filter((c) => filter.includes(c.repo));
-  return out;
+  add(searchCandidates());
+  return [...set.values()];
 }
 
 function isHandled(repo: string, number: number): boolean {
