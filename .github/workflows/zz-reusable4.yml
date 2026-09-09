@@ -1,0 +1,16 @@
+name: zz-reusable4
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        type: number
+        required: true
+      agent:
+        type: string
+        required: false
+        default: ""
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "zz4 ok issue=${{ inputs.issue_number }} agent=${{ inputs.agent }}"
