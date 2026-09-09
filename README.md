@@ -5,6 +5,9 @@
 When an Issue gets the `ai` label, a GitHub Actions job spins up a fresh machine, checks out the
 repository, runs an AI coding agent (Pi) on a dedicated branch, and opens a pull request.
 
+> 本仓库是这套流水线的**实现本体（hub）**。要在你自己的仓库里让 AI 修 Issue，
+> 见下方「在自己的仓库启用」；想给本仓库自己交 AI 任务，直接用文末/下方 `ai` 标签流程。
+
 ## How it works (V0.1)
 
 ```text
@@ -18,6 +21,7 @@ GitHub Issue #123 ──label: ai──▶ GitHub Actions (ubuntu, Node 24)
                                         ▼
                               Pi (deepseek-v4-flash, thinking=high, --mode json)
                                         │  analyze → edit → run checks → iterate
+                                        │  (agent CLI installed on demand at runtime)
                                         ▼
                               commit → push → PR ("Fixes #123")
                                         │
@@ -47,11 +51,8 @@ Routing: issue label `agent:<name>` > repo variable `AI_AGENT` > rules in
   `AI_MAX_ATTEMPTS` (default `3`, verification retries), `VERIFY_CMD` (override the check
   command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`),
   `AI_AGENT` (force a specific agent for every run; default: auto-route).
-- Optional secret `EASYGH_PR_TOKEN`: a personal token used **only for PR creation**, needed when your
-  org policy blocks the automatic GITHUB_TOKEN from creating pull requests
-  (*Settings → Actions → General → “Allow GitHub Actions to create and approve pull requests”*).
-  If that org toggle is enabled, the fallback is not needed.
-  Repository variables (optional): `AI_MODEL` (default `deepseek-v4-flash`), `AI_THINKING` (default `high`).
+  On EasyGithub itself (public repo) all of this is already configured; other repos need the
+  installer (`install-to-repo.sh`) or the App to set it up.
 
 ### Model / provider
 
@@ -62,7 +63,7 @@ compatibility layer needed**:
 - stronger: `deepseek-v4-pro`
 - available via `vars.AI_MODEL`, or per-run via workflow env.
 
-## Using the pipeline on this repo
+## 在本仓库试用（dogfood）
 
 1. Make sure labels exist: `bash scripts/create-labels.sh EasyIndie/EasyGithub`
 2. Open an Issue describing a bug or feature.
@@ -78,22 +79,29 @@ Remove the `ai-failed` label, then add `ai` again. Removing `ai-failed` is what 
 
 Every pull request (including AI pipeline PRs) runs `npm run check` via `.github/workflows/ci.yml`.
 
-### Deploy to another repository (cross-repo reuse)
+## 在自己的仓库启用（cross-repo reuse）
 
-`GITHUB_TOKEN` cannot write to other repositories. Three deployment modes:
+先选适合你的方式（按侵入性从低到高）：
 
-**Mode 3 — GitHub App (zero-file, non-invasive, recommended).** A GitHub App
-(`easygithub-ai`, install org-wide) lets the hub poll org Issues and write
+- **组织内（EasyIndie）成员**：GitHub App 已全组织安装 → 用 **Mode 3**（零文件）。
+- **外部/个人仓库**：仓库里不能只写注释就让 App 工作 → 用 **Mode 2**（推荐，1 个文件）或 **Mode 1**。
+  （也可以自建同名 GitHub App 后获得 Mode 3，见 `docs/realtime.md`。）
+
+**Mode 3 — GitHub App (zero-file; EasyIndie org only).** A GitHub App
+(`easygithub-ai`, installed org-wide) lets the hub poll org Issues and write
 branches/PRs in any installed repo. Targets contain **no workflow, no runner,
 no secret**. Mark an Issue for AI by adding the `ai` label or putting
 `easygh-ai` anywhere in its title/body. Polling runs every 5 minutes (EasyGithub is public, so these runs are free/unmetered)
 (`.github/workflows/ghapp-scan.yml` → `agent-runner/src/dispatcher.ts`);
 secrets live only in the hub.
 
-**Mode 2 — caller file (low-intrusion).** One ~15-line workflow in the target
-calls the centralized reusable workflow + composite action in EasyGithub.
+**Mode 2 — caller file (low-intrusion, works anywhere).** One ~15-line workflow in the target
+calls the centralized reusable workflow + composite action in EasyGithub. Needs: admin on target
+(to let the installer set the `DEEPSEEK_API_KEY` secret + labels) and EasyGithub must be readable
+(public now, so any repo can use it).
 
-**Mode 1 — full copy.** `--copy` overlays the whole pipeline into the target.
+**Mode 1 — full copy (works anywhere).** `--copy` overlays the whole pipeline (workflow +
+`agent-runner/`) into the target; fully self-contained, no dependency on EasyGithub.
 
 ```bash
 bash scripts/install-to-repo.sh EasyIndie/<repo>    # mode 2 caller
