@@ -1,0 +1,8 @@
+name: zz-reusable
+on:
+  workflow_call:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "zz minimal reusable OK for ${{ github.repository }}"
