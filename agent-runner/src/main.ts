@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     const agent = selectAgent(agentName);
     const isPi = agentName === "pi";
     const provider = isPi ? (process.env.PROVIDER ?? "deepseek") : agentName;
-    const model = isPi ? (process.env.MODEL ?? "deepseek-v4-pro") : (process.env[`AI_${agentName.toUpperCase()}_MODEL`]?.trim() ?? "default");
+    const model = isPi ? (process.env.MODEL?.trim() || "deepseek-v4-pro") : (process.env[`AI_${agentName.toUpperCase()}_MODEL`]?.trim() ?? "default");
     const extraArgs = isPi && thinking ? ["--thinking", thinking] : [];
     log(`agent=${agent.name} provider=${provider} model=${model} (override=${explicitAgent ?? "no"})`);
     log(`runDir=${runDir} defaultBranch=${defaultBranch} maxAttempts=${maxAttempts} verifyCmd=${process.env.VERIFY_CMD ?? "(auto)"}`);
