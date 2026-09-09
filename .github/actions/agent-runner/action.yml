@@ -1,0 +1,8 @@
+name: agent-runner
+description: Run the EasyGithub Agent Runner (code lives in this repository).
+runs:
+  using: composite
+  steps:
+    - name: Run agent runner
+      shell: bash
+      run: node "${{ github.action_path }}/../../../agent-runner/src/main.ts"

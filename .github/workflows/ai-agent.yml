@@ -43,11 +43,6 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install pi (pinned)
-        run: |
-          npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.85.1
-          pi --version
-
       - name: Run agent runner
         id: run
         env:

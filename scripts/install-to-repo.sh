@@ -1,39 +1,52 @@
 #!/usr/bin/env bash
 # Install the EasyGithub AI pipeline into another repository.
 #
-# The pipeline is self-contained per repository (GITHUB_TOKEN cannot cross
-# repos), so this script copies the workflow + agent-runner into the target
-# repo as a branch + PR, and prepares labels + the DEEPSEEK_API_KEY secret.
+# Default mode (recommended): LOW-INTRUSION — writes a single ~15-line caller
+# workflow that calls the centralized reusable workflow + composite action in
+# EasyIndie/EasyGithub (runner code stays there; @main auto-updates).
+#
+# Legacy mode: `--copy` overlays the full workflow + agent-runner into the
+# target repo (self-contained per repo; no dependency on EasyGithub).
+#
+# In both modes the installer also creates labels and sets the
+# DEEPSEEK_API_KEY secret, then opens a PR for review.
 #
 # Usage:
-#   bash scripts/install-to-repo.sh <owner/repo> [--with-ci] [--no-secret]
-#     --with-ci    also copy .github/workflows/ci.yml (only if none exists there)
-#     --no-secret  skip setting the DEEPSEEK_API_KEY secret (e.g. already set)
+#   bash scripts/install-to-repo.sh <owner/repo> [--copy] [--ref <tag|branch>] [--with-ci] [--no-secret]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="${1:-}"
+MODE="call"
+REF="main"
 WITH_CI=0
 NO_SECRET=0
-for a in "${@:2}"; do
+rest="${*:2}"
+for a in $rest; do
   case "$a" in
+    --copy) MODE="copy" ;;
     --with-ci) WITH_CI=1 ;;
     --no-secret) NO_SECRET=1 ;;
-    *) echo "unknown option: $a" >&2; exit 1 ;;
+    --ref) : ;; # value comes next
+    --ref=*) REF="${a#--ref=}" ;;
+    -*) : ;; # tolerate unknown flags loosely (ref value consumed below)
   esac
 done
-if [ -z "$TARGET" ]; then echo "usage: $0 <owner/repo> [--with-ci] [--no-secret]" >&2; exit 1; fi
+# crude --ref <value> parsing
+if [ -n "${2:-}" ] && [ "${2:-}" = "--ref" ]; then REF="${3:-main}"; fi
+if [ -z "$TARGET" ]; then echo "usage: $0 <owner/repo> [--copy] [--ref tag|branch] [--with-ci] [--no-secret]" >&2; exit 1; fi
 
 BRANCH="easygithub/ai-pipeline"
 COMMIT_NAME="EasyGithub Installer"
 COMMIT_EMAIL="easygithub[bot]@users.noreply.github.com"
+HUB="EasyIndie/EasyGithub"
 
 # sanity -------------------------------------------------------------------
 gh auth status >/dev/null 2>&1 || { echo "gh not authenticated" >&2; exit 1; }
 if ! gh repo view "$TARGET" >/dev/null 2>&1; then echo "repo not found: $TARGET" >&2; exit 1; fi
-if [ "$TARGET" = "EasyIndie/EasyGithub" ]; then echo "refusing to install into EasyGithub itself (it already runs the pipeline)" >&2; exit 1; fi
+if [ "$TARGET" = "$HUB" ]; then echo "refusing to install into $HUB (it already runs the pipeline)" >&2; exit 1; fi
 DEFAULT_BRANCH="$(gh repo view "$TARGET" --json defaultBranchRef --jq '.defaultBranchRef.name')"
-echo "==> target=$TARGET default=$DEFAULT_BRANCH"
+echo "==> target=$TARGET default=$DEFAULT_BRANCH mode=$MODE ref=$REF"
 
 # labels (independent of the PR) -------------------------------------------
 echo "==> labels"
@@ -60,19 +73,50 @@ git clone --quiet "https://github.com/$TARGET.git" "$TMP/repo"
 cd "$TMP/repo"
 
 # close/replace an existing install branch/PR (refresh on updates)
-if gh pr list --repo "$TARGET" --head "$BRANCH" --state open --json number --jq '.[0].number' | grep -qE '^[0-9]+$'; then
-  OLD_PR="$(gh pr list --repo "$TARGET" --head "$BRANCH" --state open --json number --jq '.[0].number')"
+OLD_PR="$(gh pr list --repo "$TARGET" --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+if [ -n "$OLD_PR" ] && [ "$OLD_PR" != "null" ]; then
   echo "==> replacing existing install PR #$OLD_PR"
-  gh pr close "$OLD_PR" --repo "$TARGET" --comment "superseded by refreshed install" >/dev/null
+  gh pr close "$OLD_PR" --repo "$TARGET" --comment "superseded by refreshed install" >/dev/null || true
 fi
 git push origin --delete "$BRANCH" 2>/dev/null || true
 
-# overlay files ---------------------------------------------------------------
-rm -rf agent-runner
-cp -R "$ROOT/agent-runner" ./agent-runner
-rm -rf agent-runner/node_modules agent-runner/*.tsbuildinfo
 mkdir -p .github/workflows
-cp "$ROOT/.github/workflows/ai-agent.yml" .github/workflows/ai-agent.yml
+
+if [ "$MODE" = "copy" ]; then
+  # legacy: full self-contained copy
+  rm -rf agent-runner
+  cp -R "$ROOT/agent-runner" ./agent-runner
+  rm -rf agent-runner/node_modules agent-runner/*.tsbuildinfo
+  cp "$ROOT/.github/workflows/ai-agent.yml" .github/workflows/ai-agent.yml
+else
+  # low-intrusion caller: 15 lines pointing at the hub reusable workflow
+  cat > .github/workflows/ai-agent.yml <<EOF
+name: ai-agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: ai-agent-\${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  agent:
+    if: github.event.label.name == 'ai'
+    uses: $HUB/.github/workflows/ai-agent-reusable.yml@$REF
+    with:
+      issue-number: \${{ github.event.issue.number }}
+      agent: \${{ vars.AI_AGENT || '' }}
+      model: \${{ vars.AI_MODEL || '' }}
+      thinking: \${{ vars.AI_THINKING || '' }}
+      max-attempts: \${{ vars.AI_MAX_ATTEMPTS || 3 }}
+      verify-cmd: \${{ vars.VERIFY_CMD || '' }}
+    secrets:
+      deepseek-api-key: \${{ secrets.DEEPSEEK_API_KEY }}
+EOF
+fi
+
 if [ "$WITH_CI" -eq 1 ] && [ ! -f .github/workflows/ci.yml ]; then
   cp "$ROOT/.github/workflows/ci.yml" .github/workflows/ci.yml
 fi
@@ -80,24 +124,29 @@ fi
 git checkout -qb "$BRANCH"
 git add -A
 git -c user.name="$COMMIT_NAME" -c user.email="$COMMIT_EMAIL" \
-  commit -m "chore: install EasyGithub AI pipeline (ai-agent workflow + agent-runner)" --quiet
+  commit -m "chore: install EasyGithub AI pipeline ($MODE mode)" --quiet
 git push -q -u origin "$BRANCH"
 
-PR_BODY="## EasyGithub AI 流水线安装
+if [ "$MODE" = "copy" ]; then
+  MODE_NOTE="- \`.github/workflows/ai-agent.yml\` — full self-contained copy (trigger: Issue labeled \`ai\`)\n- \`agent-runner/\` — full runner copy in this repo"
+else
+  MODE_NOTE="- \`.github/workflows/ai-agent.yml\` — **caller file only** (~15 lines)\n- 实际流水线与 runner 逻辑集中在 \`$HUB\`（reusable workflow @\`$REF\`），runner 更新自动生效"
+fi
 
-为本仓库安装 **Issue → GitHub Actions → Agent Runner → AI(pi/claude/codex) → PR** 流水线：
+PR_BODY="## EasyGithub AI 流水线安装（mode: $MODE）
 
-- \`.github/workflows/ai-agent.yml\` — 触发：Issue 打上 \`ai\` 标签
-- \`agent-runner/\` — 调度器（自动路由 agent、独立验证 \`AI_MAX_ATTEMPTS\`、自动开 PR）
+为本仓库接入 **Issue → AI(pi/claude/codex) → 独立验证 → PR** 流水线。
+
+$MODE_NOTE
 
 ### 使用
 
-1. 本 PR 合并后，给 Issue 打 \`ai\` 标签即触发（可选 \`feature\`/\`bug\` 决定模板，\`agent:claude\` 等指定引擎）。
-2. 若分支/PR 更新：在 EasyGithub 仓库运行 \`bash scripts/install-to-repo.sh $TARGET\` 会刷新本安装。
-3. Secret \`DEEPSEEK_API_KEY\` 与 \`ai*\` 标签已由安装器配好（失败则手动配）。
+1. 合并本 PR 后，给 Issue 打 \`ai\` 标签即触发（可选 \`feature\`/\`bug\` 模板标签、\`agent:claude\` 引擎标签）。
+2. Secret \`DEEPSEEK_API_KEY\` 与 \`ai*\`/\`agent:*\` 标签已由安装器配置。
+3. 更新：重新运行安装器刷新（caller 模式自动跟随 \`@$REF\`，基本无需刷新）。
 
-> 说明：此方案为**每仓库自包含**（GITHUB_TOKEN 不能跨仓库写）。\`ci.yml\` 未包含，除非用 \`--with-ci\`。
+> 参考: \`$HUB\` 仓库 docs/agents.md
 "
 gh pr create --repo "$TARGET" --base "$DEFAULT_BRANCH" --head "$BRANCH" \
-  --title "chore: install EasyGithub AI pipeline" --body "$PR_BODY"
+  --title "chore: install EasyGithub AI pipeline ($MODE)" --body "$PR_BODY"
 echo "==> done. Merge the PR in $TARGET to activate the pipeline."

@@ -1,9 +1,0 @@
-name: ping
-description: Probe action — prints its own (EasyGithub) path, proving private cross-repo action fetch works.
-runs:
-  using: composite
-  steps:
-    - shell: bash
-      run: |
-        echo "composite action fetched from: ${GITHUB_ACTION_PATH}"
-        node -e "console.log('composite version probe OK')"
