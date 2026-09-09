@@ -34,15 +34,14 @@ jobs:
 
       - name: Mint GitHub App installation token
         id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.EASYGH_APP_ID }}
-          private-key: ${{ secrets.EASYGH_APP_PRIVATE_KEY }}
-          owner: EasyIndie
+        env:
+          EASYGH_APP_ID: ${{ vars.EASYGH_APP_ID }}
+          EASYGH_APP_PRIVATE_KEY: ${{ secrets.EASYGH_APP_PRIVATE_KEY }}
+          ORG: EasyIndie
+        run: node scripts/ghapp-token.mjs
 
       - name: Dispatch AI issues across org
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ORG: EasyIndie
           MAX_ISSUES: "4"
           RUNNER_TEMP: ${{ runner.temp }}
