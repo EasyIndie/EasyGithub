@@ -12,6 +12,8 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 ## Checks
 
 - Type check: `npm run typecheck` (root, runs the workspace).
+- The pipeline independently verifies agent output with `npm run check` before opening a PR
+  (`AI_MAX_ATTEMPTS` controls retries).
 - There is no automated test suite yet.
 
 ## Working in this repo

@@ -41,6 +41,9 @@ GitHub Issue #123 ──label: ai──▶ GitHub Actions (ubuntu, Node 24)
 
 - GitHub Actions minutes (free tier or paid) — the job runs a full Pi session, typically several minutes.
 - One provider API key stored as a repo secret: `DEEPSEEK_API_KEY` (DeepSeek V4; see below).
+  Repository variables (optional): `AI_MODEL` (default `deepseek-v4-pro`), `AI_THINKING`,
+  `AI_MAX_ATTEMPTS` (default `3`, verification retries), `VERIFY_CMD` (override the check
+  command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`).
 - Optional secret `EASYGH_PR_TOKEN`: a personal token used **only for PR creation**, needed when your
   org policy blocks the automatic GITHUB_TOKEN from creating pull requests
   (*Settings → Actions → General → “Allow GitHub Actions to create and approve pull requests”*).
@@ -96,11 +99,16 @@ Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committi
 
 ## Status & roadmap
 
-- **V0.1 (now):** single-repo, Pi/DeepSeek, Issue→PR. Verified on this repository (self-hosting).
-- V0.2: more agents (Claude Code / Codex / EasyTeam `dev` team), agent routing, reuse across repos
-  (requires a PAT or GitHub App; `GITHUB_TOKEN` cannot push to other repositories).
-- V0.3: CI-failure auto-fix loop (PR checks → feed failures back to the agent).
-- V0.4+: GitHub App webhooks, queue/task store, long-running server.
+- **V0.1 (done):** single-repo, Pi/DeepSeek, Issue→PR. Verified on this repository (self-hosting).
+- **V0.2 (partial):** independent verification + failure auto-retry inside the runner: after the
+  agent finishes, the runner runs the repository's own checks (`npm run check`, or `VERIFY_CMD`)
+  without trusting the agent; on failure the output is fed back to the agent for another attempt
+  (default 3, `AI_MAX_ATTEMPTS`). This is the core of the future “CI failure → AI fixes” loop,
+  implemented in-workflow to dodge the approval gate GitHub applies to bot-created PRs.
+- **V0.2 (next):** more agents (Claude Code / Codex / EasyTeam `dev` team), agent routing, reuse
+  across repos (requires a PAT or GitHub App; `GITHUB_TOKEN` cannot push to other repositories).
+- **V0.3/V0.4:** PR-CI failure feedback for human PRs (`ci.yml` already runs `npm run check` on
+  every PR); GitHub App webhooks, queue/task store, long-running server.
 
 ## License
 

@@ -60,6 +60,11 @@ jobs:
           MODEL: ${{ vars.AI_MODEL || 'deepseek-v4-pro' }}
           THINKING: ${{ vars.AI_THINKING || '' }}
           PI_TIMEOUT_MS: "1500000"
+          # V0.3: independent verification inside the ai-agent workflow
+          # (avoids the approval gate GitHub applies to bot-created PRs).
+          AI_MAX_ATTEMPTS: ${{ vars.AI_MAX_ATTEMPTS || '3' }}
+          # optional: override the auto-detected check command
+          # VERIFY_CMD: "npm run lint && npm test"
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: node agent-runner/src/main.ts
 
