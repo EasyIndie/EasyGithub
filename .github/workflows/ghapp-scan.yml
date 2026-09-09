@@ -69,4 +69,7 @@ jobs:
           CLAUDE_CODE_SUBAGENT_MODEL: deepseek-v4-flash
           CLAUDE_CODE_EFFORT_LEVEL: max
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
-        run: node agent-runner/src/dispatcher.ts
+        run: |
+          echo "dispatch prefix=${GH_TOKEN:0:4} len=${#GH_TOKEN}"
+          curl -s -o /dev/null -w "dispatch curl: %{http_code}\n" -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/installation/repositories
+          node agent-runner/src/dispatcher.ts
