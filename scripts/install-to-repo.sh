@@ -133,20 +133,28 @@ else
   MODE_NOTE="- \`.github/workflows/ai-agent.yml\` — **caller file only** (~15 lines)\n- 实际流水线与 runner 逻辑集中在 \`$HUB\`（reusable workflow @\`$REF\`），runner 更新自动生效"
 fi
 
-PR_BODY="## EasyGithub AI 流水线安装（mode: $MODE）
+# write the PR body via python (avoids multi-line shell quoting pitfalls)
+python3 - "$MODE" "$REF" "$HUB" "$MODE_NOTE" "$TMP/pr-body.md" <<'PYEOF'
+import sys
+mode, ref, hub, note, out = sys.argv[1:6]
+note = note.replace("\\n", "\n")
+body = f"""## EasyGithub AI 流水线安装（mode: {mode}）
 
 为本仓库接入 **Issue → AI(pi/claude/codex) → 独立验证 → PR** 流水线。
 
-$MODE_NOTE
+{note}
 
 ### 使用
 
 1. 合并本 PR 后，给 Issue 打 \`ai\` 标签即触发（可选 \`feature\`/\`bug\` 模板标签、\`agent:claude\` 引擎标签）。
 2. Secret \`DEEPSEEK_API_KEY\` 与 \`ai*\`/\`agent:*\` 标签已由安装器配置。
-3. 更新：重新运行安装器刷新（caller 模式自动跟随 \`@$REF\`，基本无需刷新）。
+3. 更新：重新运行安装器刷新（caller 模式自动跟随 \`@{ref}\`，基本无需刷新）。
 
-> 参考: \`$HUB\` 仓库 docs/agents.md
-"
+> 参考: \`{hub}\` 仓库 docs/agents.md
+"""
+open(out, "w", encoding="utf-8").write(body)
+PYEOF
+
 gh pr create --repo "$TARGET" --base "$DEFAULT_BRANCH" --head "$BRANCH" \
-  --title "chore: install EasyGithub AI pipeline ($MODE)" --body "$PR_BODY"
+  --title "chore: install EasyGithub AI pipeline ($MODE)" --body-file "$TMP/pr-body.md"
 echo "==> done. Merge the PR in $TARGET to activate the pipeline."

@@ -17,9 +17,9 @@ declare -A COLORS=(
 )
 
 create() {
-  local name="$1" desc="$2" out
-  out="$(gh label create "$name" -R "$REPO" --description "$desc" --color "${COLORS[$name]}" 2>&1)"
-  if [ $? -eq 0 ]; then
+  local name="$1" desc="$2" out rc=0
+  out="$(gh label create "$name" -R "$REPO" --description "$desc" --color "${COLORS[$name]}" 2>&1)" || rc=$?
+  if [ "$rc" -eq 0 ]; then
     echo "label created: $name"
   elif printf '%s' "$out" | grep -q "already exists"; then
     echo "label exists: $name"
