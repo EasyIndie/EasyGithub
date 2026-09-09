@@ -33,7 +33,7 @@ jobs:
           node-version: "24"
 
       - name: Mint GitHub App installation token
-        id: app-token
+        id: mint
         env:
           EASYGH_APP_ID: ${{ vars.EASYGH_APP_ID }}
           EASYGH_APP_PRIVATE_KEY: ${{ secrets.EASYGH_APP_PRIVATE_KEY }}
@@ -42,6 +42,7 @@ jobs:
 
       - name: Dispatch AI issues across org
         env:
+          GH_TOKEN: ${{ steps.mint.outputs.token }}
           ORG: EasyIndie
           MAX_ISSUES: "4"
           RUNNER_TEMP: ${{ runner.temp }}

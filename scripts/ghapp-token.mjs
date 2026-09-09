@@ -49,7 +49,10 @@ const tok = await tokRes.json();
 
 if (process.env.GITHUB_ENV) {
   appendFileSync(process.env.GITHUB_ENV, `GH_TOKEN=${tok.token}\n`);
-  console.log(`ghapp-token: installation ${inst.id} on ${org}; token written to env`);
-} else {
+}
+if (process.env.GITHUB_OUTPUT) {
+  appendFileSync(process.env.GITHUB_OUTPUT, `token=${tok.token}\n`);
+  console.log(`ghapp-token: installation ${inst.id} on ${org}; token written to outputs`);
+} else if (!process.env.GITHUB_ENV) {
   console.log(tok.token); // local usage only
 }
