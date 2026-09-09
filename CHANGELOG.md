@@ -10,6 +10,10 @@
 
 - Agent Runner 独立验证与失败自动重试：agent 完成后 runner 会独立运行仓库检查 `npm run check`，失败时把输出反馈给 agent 重试，最多 `AI_MAX_ATTEMPTS`=3 次。
 
+### Verified
+
+- `claude` 与 `codex` 两个 agent 已使用 DeepSeek 同一把 key 完成端到端验收（2026-09-09）。
+
 ## [0.2.0] - 2026-09-09
 
 ### Added
