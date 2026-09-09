@@ -20,9 +20,13 @@ create() {
   local name="$1" desc="$2"
   if gh label view "$name" -R "$REPO" >/dev/null 2>&1; then
     echo "label exists: $name"
-  else
-    gh label create "$name" -R "$REPO" --description "$desc" --color "${COLORS[$name]}"
+  elif gh label create "$name" -R "$REPO" --description "$desc" --color "${COLORS[$name]}" 2>/dev/null; then
     echo "label created: $name"
+  elif gh label view "$name" -R "$REPO" >/dev/null 2>&1; then
+    echo "label exists: $name"
+  else
+    echo "!! failed to create label: $name" >&2
+    return 1
   fi
 }
 
