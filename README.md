@@ -108,6 +108,37 @@ bash scripts/install-to-repo.sh EasyIndie/<repo>    # mode 2 caller
 bash scripts/install-to-repo.sh EasyIndie/<repo> --copy   # mode 1
 ```
 
+### 30 秒快速上手（按模式）
+
+**Mode 3（零文件 · EasyIndie 成员）** — 什么都不用装：
+```bash
+# 1) 在任意 EasyIndie 仓库开一个 Issue，标题/正文含 easygh-ai，或打上 ai 标签
+gh issue create -R EasyIndie/<repo> --title "fix: xxx" --body "...\n\n<!-- easygh-ai -->"
+# 2) 等 ≤5 分钟，hub 轮询发现后自动开 PR（标签/secret 都不需要你管）
+```
+
+**Mode 2（1 个文件 · 任何仓库）** — 安装一次即可用：
+```bash
+# 0) 前置：gh 已登录、对目标仓库有 admin、有 DeepSeek key（或准备手动设 secret）
+gh repo clone EasyIndie/EasyGithub ~/easygh
+# 1) 自动：建 caller workflow + 标签 + 开 PR（若能读到本地 DeepSeek key 则一并设 secret）
+bash ~/easygh/scripts/install-to-repo.sh <you>/<repo>
+#    若提示跳过 secret：手动补一次 gh secret set DEEPSEEK_API_KEY -R <you>/<repo>（值从 platform.deepseek.com 获取）
+# 2) 合并安装 PR（gh pr list 找到编号后）
+gh pr merge <PR#> -R <you>/<repo>
+# 3) 用起来：给任意 Issue 打 ai 标签
+gh issue edit <N> -R <you>/<repo> --add-label ai
+```
+
+**Mode 1（全复制 · 任何仓库，需离线自包含）** — 同 Mode 2，仅安装命令加 `--copy`：
+```bash
+bash ~/easygh/scripts/install-to-repo.sh <you>/<repo> --copy
+# 之后同上：合并安装 PR → 打 ai 标签触发
+```
+
+> 三种模式都支持：标签 `feature`/`bug` 选模板、`agent:claude`/`agent:codex` 选引擎；
+> 验证失败自动重试（`AI_MAX_ATTEMPTS`），通过后才开 PR。更多见 [docs/agents.md](docs/agents.md)。
+
 Known platform limitation (verified): a reusable workflow invoked cross-repo
 cannot declare a `permissions` key (fails at queue time); write access comes
 from the caller job permissions + repo default=write. GitHub App installation
