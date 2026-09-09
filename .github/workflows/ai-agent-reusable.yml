@@ -38,11 +38,10 @@ on:
       deepseek_api_key:
         required: true
 
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-
+# NOTE: cross-repo reusable workflows in this org reject a top-level or
+# job-level `permissions` key at queue time (startup_failure). Write access is
+# granted by the CALLER's job permissions (see install-to-repo.sh caller
+# template) plus the caller repo default workflow permissions=write.
 jobs:
   run-agent:
     runs-on: ubuntu-latest
