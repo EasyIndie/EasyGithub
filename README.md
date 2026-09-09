@@ -78,6 +78,28 @@ Remove the `ai-failed` label, then add `ai` again. Removing `ai-failed` is what 
 
 Every pull request (including AI pipeline PRs) runs `npm run check` via `.github/workflows/ci.yml`.
 
+### Deploy to another repository (cross-repo reuse)
+
+`GITHUB_TOKEN` cannot write to other repositories, so the pipeline is **self-contained per repo**.
+To install it into any repository (must be a repo where you have push + admin):
+
+```bash
+bash scripts/install-to-repo.sh EasyIndie/<repo>          # also copies ci.yml with --with-ci
+```
+
+The installer:
+
+1. creates the `ai*` / `agent:*` labels on the target repo,
+2. sets the `DEEPSEEK_API_KEY` secret (from your local `~/.pi/agent/auth.json`),
+3. pushes a branch `easygithub/ai-pipeline` containing `.github/workflows/ai-agent.yml` +
+   `agent-runner/` and opens a PR for you to review/merge.
+
+After the PR is merged, tag an Issue with `ai` in that repo and the pipeline runs there
+(optional `--with-ci` also copies the PR-CI workflow if the target has none; `--no-secret` skips the secret).
+Re-run the installer any time to refresh the installed copy with the latest runner.
+
+A future V0.4 (GitHub App) will replace copy-per-repo with a central hub + webhook dispatch.
+
 ### Local dry run (no Actions minutes)
 
 ```bash

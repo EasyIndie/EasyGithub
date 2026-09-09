@@ -14,6 +14,7 @@
     "check": "npm run typecheck",
     "typecheck": "npm run typecheck --workspace=agent-runner",
     "labels": "bash scripts/create-labels.sh",
-    "dev-run": "bash scripts/dev-run.sh"
+    "dev-run": "bash scripts/dev-run.sh",
+    "install-to-repo": "bash scripts/install-to-repo.sh"
   }
 }
