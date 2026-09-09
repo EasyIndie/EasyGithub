@@ -1,0 +1,20 @@
+name: zz-reusable5
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        type: number
+        required: true
+    secrets:
+      deepseek_api_key:
+        required: true
+permissions:
+  contents: write
+  issues: write
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "zz5 ok issue=${{ inputs.issue_number }} keylen=${#DEEPSEEK_API_KEY} secret=${{ secrets.deepseek_api_key != '' }}"
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.deepseek_api_key }}
