@@ -11,6 +11,9 @@ declare -A COLORS=(
   [ai-pr]="8250DF"
   [ai-failed]="B60205"
   [ai-done]="0E8A16"
+  [agent:pi]="1F6FEB"
+  [agent:claude]="5319E7"
+  [agent:codex]="BFD4F2"
 )
 
 create() {
