@@ -66,6 +66,16 @@ jobs:
           # optional: override the auto-detected check command
           # VERIFY_CMD: "npm run lint && npm test"
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # Claude Code agent -> DeepSeek (Anthropic-compatible endpoint)
+          ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DEEPSEEK_API_KEY }}
+          ANTHROPIC_MODEL: "deepseek-v4-pro[1m]"
+          ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-pro[1m]"
+          ANTHROPIC_DEFAULT_SONNET_MODEL: deepseek-v4-flash
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-v4-flash
+          CLAUDE_CODE_SUBAGENT_MODEL: deepseek-v4-flash
+          CLAUDE_CODE_EFFORT_LEVEL: max
+          CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
         run: node agent-runner/src/main.ts
 
       - name: Upload run logs (always)

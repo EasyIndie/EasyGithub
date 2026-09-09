@@ -6,6 +6,7 @@ import { addLabel, commentFromFile, createPr, getIssue, listLabels, removeLabel,
 import { classifyTask, renderTaskMarkdown } from "./prompt.ts";
 import { routeAgent } from "./router.ts";
 import { runVerify } from "./verify.ts";
+import { ensureAgentCli } from "./cli.ts";
 
 const L = {
   trigger: "ai",
@@ -127,6 +128,12 @@ async function main(): Promise<void> {
     const extraArgs = isPi && thinking ? ["--thinking", thinking] : [];
     log(`agent=${agent.name} provider=${provider} model=${model} (override=${explicitAgent ?? "no"})`);
     log(`runDir=${runDir} defaultBranch=${defaultBranch} maxAttempts=${maxAttempts} verifyCmd=${process.env.VERIFY_CMD ?? "(auto)"}`);
+
+    if (!isPi) {
+      const cliIssue = await ensureAgentCli(agentName);
+      if (cliIssue) log(`warning: agent CLI provisioning: ${cliIssue}`);
+      else log(`agent CLI ready (${agentName})`);
+    }
 
     const meta = {
       repo,
