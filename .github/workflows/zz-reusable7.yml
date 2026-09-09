@@ -1,0 +1,15 @@
+name: zz-reusable7
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        type: number
+        required: true
+    secrets:
+      deepseek_api_key:
+        required: true
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "zz7 ok issue=${{ inputs.issue_number }} secretNonEmpty=${{ secrets.deepseek_api_key != '' }}"
