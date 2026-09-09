@@ -67,7 +67,7 @@ function searchCandidates(): Candidate[] {
   for (const repo of repos) {
     let items: Array<{ n: number; t: string; b: string; l: string[] }> = [];
     try {
-      const raw = gh(["api", `repos/${repo}/issues`, "-f", "state=open", "-f", "per_page=100", "--jq", "[.[] | select(.pull_request == null) | {n:.number,t:(.title // \"\"),b:(.body // \"\"),l:[.labels[].name]}]"], );
+      const raw = gh(["api", `repos/${repo}/issues?state=open&per_page=100`, "--jq", "[.[] | select(.pull_request == null) | {n:.number,t:(.title // \"\"),b:(.body // \"\"),l:[.labels[].name]}]"], );
       items = JSON.parse(raw) as typeof items;
     } catch (e) {
       console.log(`[dispatch] issues list failed for ${repo}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
