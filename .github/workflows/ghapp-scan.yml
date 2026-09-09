@@ -40,6 +40,18 @@ jobs:
           ORG: EasyIndie
         run: node scripts/ghapp-token.mjs
 
+      - name: debug-token (temp)
+        env:
+          GH_TOKEN: ${{ steps.mint.outputs.token }}
+        run: |
+          echo "prefix=${GH_TOKEN:0:4} len=${#GH_TOKEN}"
+          echo -n "curl: "
+          curl -s -o /tmp/o.json -w "%{http_code}\n" -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/installation/repositories
+          head -c 120 /tmp/o.json; echo
+          echo -n "gh: "
+          gh api /installation/repositories --jq '.total_count' 2>&1 | head -1 || true
+          echo -n "gh env var: "; env | grep -E "^(GH_TOKEN|GITHUB_TOKEN)" | sed -E 's/=.*/=***/'
+
       - name: Dispatch AI issues across org
         env:
           GH_TOKEN: ${{ steps.mint.outputs.token }}
