@@ -71,5 +71,5 @@ jobs:
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
         run: |
           echo "dispatch prefix=${GH_TOKEN:0:4} len=${#GH_TOKEN}"
-          curl -s -o /dev/null -w "dispatch curl: %{http_code}\n" -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/installation/repositories
+          node -e "const {spawnSync}=require('child_process');const r=spawnSync('gh',['api','/installation/repositories','--paginate','-f','per_page=100','--jq','.repositories[].full_name'],{encoding:'utf8',env:process.env});console.log('node-gh status='+r.status,'err='+(r.stderr||'').slice(0,200),'tok='+(process.env.GH_TOKEN||'').slice(0,4))"
           node agent-runner/src/dispatcher.ts
