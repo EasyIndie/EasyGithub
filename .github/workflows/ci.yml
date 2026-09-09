@@ -1,0 +1,25 @@
+name: ci
+
+# Minimal PR CI: type-check the workspace on every pull request.
+# AI pipeline PRs (branch prefix ai/issue-*) get checked too — this is the
+# referee for the "CI failure -> feed back to agent" loop (V0.3).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Install
+        run: npm ci
+      - name: Type check
+        run: npm run check
