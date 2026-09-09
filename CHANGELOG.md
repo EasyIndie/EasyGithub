@@ -10,6 +10,13 @@
 
 - Agent Runner 独立验证与失败自动重试：agent 完成后 runner 会独立运行仓库检查 `npm run check`，失败时把输出反馈给 agent 重试，最多 `AI_MAX_ATTEMPTS`=3 次。
 
+## [0.2.0] - 2026-09-09
+
+### Added
+
+- 多 Agent 支持：`pi`、`claude`、`codex` 统一注册在 `CodingAgent` 接口后。
+- Agent 路由：新增 `agent-runner/config/agents.json` 路由规则，Issue 标签 `agent:<name>` 可覆盖选择。
+
 ## [0.1.1] - 2026-09-09
 
 ### Changed
