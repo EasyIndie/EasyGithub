@@ -43,40 +43,48 @@ permissions:
   issues: write
   pull-requests: write
 
-concurrency:
-  group: ai-agent-reusable-${{ inputs.issue-number }}
-  cancel-in-progress: false
-
 jobs:
   run-agent:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GITHUB_REPOSITORY: ${{ github.repository }}
-      ISSUE_NUMBER: ${{ inputs.issue-number }}
-      DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
-      RUNNER_TEMP: ${{ runner.temp }}
-      AGENT: ${{ inputs.agent }}
-      MODEL: ${{ inputs.model }}
-      THINKING: ${{ inputs.thinking }}
-      AI_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
-      VERIFY_CMD: ${{ inputs.verify-cmd }}
-      DEEPSEEK_API_KEY: ${{ secrets.deepseek-api-key }}
-      # Claude Code agent -> DeepSeek (Anthropic-compatible endpoint)
-      ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
-      ANTHROPIC_AUTH_TOKEN: ${{ secrets.deepseek-api-key }}
-      ANTHROPIC_MODEL: "deepseek-v4-pro[1m]"
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-pro[1m]"
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-pro[1m]"
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-v4-flash
-      CLAUDE_CODE_SUBAGENT_MODEL: deepseek-v4-flash
-      CLAUDE_CODE_EFFORT_LEVEL: max
-      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
     steps:
+      - name: Export pipeline env
+        env:
+          ISSUE: ${{ inputs.issue-number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+          RUNNER_TEMP_DIR: ${{ runner.temp }}
+          AGENT: ${{ inputs.agent }}
+          MODEL: ${{ inputs.model }}
+          THINKING: ${{ inputs.thinking }}
+          ATTEMPTS: ${{ inputs.max-attempts }}
+          VERIFY: ${{ inputs.verify-cmd }}
+          DEEPSEEK: ${{ secrets.deepseek-api-key }}
+        run: |
+          {
+            echo "GH_TOKEN=${{ github.token }}"
+            echo "ISSUE_NUMBER=$ISSUE"
+            echo "DEFAULT_BRANCH=$DEFAULT_BRANCH"
+            echo "RUNNER_TEMP=$RUNNER_TEMP_DIR"
+            echo "AGENT=$AGENT"
+            echo "MODEL=$MODEL"
+            echo "THINKING=$THINKING"
+            echo "AI_MAX_ATTEMPTS=$ATTEMPTS"
+            echo "VERIFY_CMD=$VERIFY"
+            echo "DEEPSEEK_API_KEY=$DEEPSEEK"
+            echo "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic"
+            echo "ANTHROPIC_AUTH_TOKEN=$DEEPSEEK"
+            echo "ANTHROPIC_MODEL=deepseek-v4-pro[1m]"
+            echo "ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro[1m]"
+            echo "ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro[1m]"
+            echo "ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash"
+            echo "CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash"
+            echo "CLAUDE_CODE_EFFORT_LEVEL=max"
+            echo "CLAUDE_CODE_AUTO_COMPACT_WINDOW=786432"
+          } >> "$GITHUB_ENV"
+
       - name: Skip already-handled issues
         run: |
-          LABELS=$(gh issue view "${{ inputs.issue-number }}" -R "${{ github.repository }}" --json labels -q '[.labels[].name]')
+          LABELS=$(gh issue view "$ISSUE_NUMBER" -R "$GITHUB_REPOSITORY" --json labels -q '[.labels[].name]')
           for x in ai-running ai-pr ai-failed ai-done; do
             if echo "$LABELS" | grep -q "\"$x\""; then
               echo "issue already handled ($x); skipping."
