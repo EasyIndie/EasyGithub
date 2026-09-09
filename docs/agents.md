@@ -4,7 +4,7 @@ EasyGithub 流水线支持三种编码 Agent，它们共用同一个密钥与验
 
 | Agent  | 引擎                     | DeepSeek 接入方式                                    | 默认模型                                        |
 | ------ | ------------------------ | ---------------------------------------------------- | ----------------------------------------------- |
-| `pi`   | Pi coding agent（默认）  | 原生 DeepSeek API                                    | `deepseek-v4-pro`（可用仓库变量 `AI_MODEL` 改） |
+| `pi`   | Pi coding agent（默认）  | 原生 DeepSeek API                                    | `deepseek-v4-flash` + thinking `high`（`AI_MODEL`/`AI_THINKING` 可改） |
 | `claude` | Claude Code CLI        | Anthropic 兼容端点 `https://api.deepseek.com/anthropic` | `deepseek-v4-pro[1m]`（`ANTHROPIC_MODEL`）    |
 | `codex` | Codex CLI                | DeepSeek Responses 端点（`wire_api = "responses"`）  | 由 `~/.codex/config.toml` 决定（可 `CODEX_MODEL` 覆盖） |
 
@@ -33,7 +33,7 @@ gh issue edit 15 --add-label "ai,agent:claude"
 在 *Settings → Secrets and variables → Actions → Variables* 中设置 `AI_AGENT=claude`（或 `pi` / `codex`），
 则所有运行都使用该引擎，忽略标签与路由规则。留空表示自动路由。
 
-其它可选变量：`AI_MODEL`（Pi 模型，默认 `deepseek-v4-pro`）、`AI_THINKING`、`AI_MAX_ATTEMPTS`（默认 `3`，验证失败重试次数）、`VERIFY_CMD`（覆盖自动探测的检查命令）。
+其它可选变量：`AI_MODEL`（Pi 模型，默认 `deepseek-v4-flash`）、`AI_THINKING`（默认 `high`）、`AI_MAX_ATTEMPTS`（默认 `3`，验证失败重试次数）、`VERIFY_CMD`（覆盖自动探测的检查命令）。
 
 ## 所需密钥
 

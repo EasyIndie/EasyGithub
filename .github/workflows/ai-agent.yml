@@ -52,7 +52,7 @@ jobs:
           RUNNER_TEMP: ${{ runner.temp }}
           AGENT: ${{ vars.AI_AGENT || '' }}
           PROVIDER: deepseek
-          MODEL: ${{ vars.AI_MODEL || 'deepseek-v4-pro' }}
+          MODEL: ${{ vars.AI_MODEL || 'deepseek-v4-flash' }}
           THINKING: ${{ vars.AI_THINKING || '' }}
           PI_TIMEOUT_MS: "1500000"
           # V0.3: independent verification inside the ai-agent workflow

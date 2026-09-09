@@ -16,7 +16,7 @@ GitHub Issue #123 ──label: ai──▶ GitHub Actions (ubuntu, Node 24)
                                         │  2. fetch issue → render TASK.md
                                         │  3. branch ai/issue-123
                                         ▼
-                              Pi (deepseek-v4-pro, --mode json)
+                              Pi (deepseek-v4-flash, thinking=high, --mode json)
                                         │  analyze → edit → run checks → iterate
                                         ▼
                               commit → push → PR ("Fixes #123")
@@ -43,7 +43,7 @@ Routing: issue label `agent:<name>` > repo variable `AI_AGENT` > rules in
 
 - GitHub Actions minutes (free tier or paid) — the job runs a full Pi session, typically several minutes.
 - One provider API key stored as a repo secret: `DEEPSEEK_API_KEY` (DeepSeek V4; see below).
-  Repository variables (optional): `AI_MODEL` (default `deepseek-v4-pro`), `AI_THINKING`,
+  Repository variables (optional): `AI_MODEL` (default `deepseek-v4-flash`), `AI_THINKING` (default `high`),
   `AI_MAX_ATTEMPTS` (default `3`, verification retries), `VERIFY_CMD` (override the check
   command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`),
   `AI_AGENT` (force a specific agent for every run; default: auto-route).
@@ -51,15 +51,15 @@ Routing: issue label `agent:<name>` > repo variable `AI_AGENT` > rules in
   org policy blocks the automatic GITHUB_TOKEN from creating pull requests
   (*Settings → Actions → General → “Allow GitHub Actions to create and approve pull requests”*).
   If that org toggle is enabled, the fallback is not needed.
-  Repository variables (optional): `AI_MODEL` (default `deepseek-v4-pro`), `AI_THINKING`.
+  Repository variables (optional): `AI_MODEL` (default `deepseek-v4-flash`), `AI_THINKING` (default `high`).
 
 ### Model / provider
 
 Pi has native DeepSeek support, so the key is a plain DeepSeek platform key — **no Anthropic
 compatibility layer needed**:
 
-- default model: `deepseek-v4-pro` (strong reasoning)
-- cheaper/faster: `deepseek-v4-flash`
+- default: `deepseek-v4-flash` + thinking `high` (cheap policy default)
+- stronger: `deepseek-v4-pro`
 - available via `vars.AI_MODEL`, or per-run via workflow env.
 
 ## Using the pipeline on this repo

@@ -83,7 +83,7 @@ async function main(): Promise<void> {
   const issueNumber = Number(requireEnv("ISSUE_NUMBER"));
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) throw new Error(`Bad ISSUE_NUMBER: ${process.env.ISSUE_NUMBER}`);
 
-  const thinking = process.env.THINKING?.trim();
+  const thinking = process.env.THINKING?.trim() || "high";
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS ?? 25 * 60 * 1000);
   const maxAttempts = intEnv("AI_MAX_ATTEMPTS", 3, 1, 5);
   const defaultBranch = process.env.DEFAULT_BRANCH ?? "main";
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     const agent = selectAgent(agentName);
     const isPi = agentName === "pi";
     const provider = isPi ? (process.env.PROVIDER ?? "deepseek") : agentName;
-    const model = isPi ? (process.env.MODEL?.trim() || "deepseek-v4-pro") : (process.env[`AI_${agentName.toUpperCase()}_MODEL`]?.trim() ?? "default");
+    const model = isPi ? (process.env.MODEL?.trim() || "deepseek-v4-flash") : (process.env[`AI_${agentName.toUpperCase()}_MODEL`]?.trim() ?? "default");
     const extraArgs = isPi && thinking ? ["--thinking", thinking] : [];
     log(`agent=${agent.name} provider=${provider} model=${model} (override=${explicitAgent ?? "no"})`);
     log(`runDir=${runDir} defaultBranch=${defaultBranch} maxAttempts=${maxAttempts} verifyCmd=${process.env.VERIFY_CMD ?? "(auto)"}`);

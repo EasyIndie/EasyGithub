@@ -1,0 +1,60 @@
+name: ghapp-scan
+
+# GitHub-App (zero-file, non-invasive) cross-repo mode.
+#
+# Runs on a schedule in the hub repository. A GitHub App installation token
+# (org-wide, created by actions/create-github-app-token) lets the dispatcher
+# read issues and write branches/PRs in ANY installed EasyIndie repository,
+# without adding any workflow/runner file to those repos.
+#
+# Trigger markers for an issue (union):
+#   - label `ai`
+#   - marker `easygh-ai` in the title or body
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ghapp-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Mint GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EASYGH_APP_ID }}
+          private-key: ${{ secrets.EASYGH_APP_PRIVATE_KEY }}
+          owner: EasyIndie
+
+      - name: Dispatch AI issues across org
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ORG: EasyIndie
+          MAX_ISSUES: "4"
+          RUNNER_TEMP: ${{ runner.temp }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # Claude Code agent -> DeepSeek (Anthropic-compatible endpoint)
+          ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DEEPSEEK_API_KEY }}
+          ANTHROPIC_MODEL: "deepseek-v4-pro[1m]"
+          ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-pro[1m]"
+          ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-pro[1m]"
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-v4-flash
+          CLAUDE_CODE_SUBAGENT_MODEL: deepseek-v4-flash
+          CLAUDE_CODE_EFFORT_LEVEL: max
+          CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
+        run: node agent-runner/src/dispatcher.ts
