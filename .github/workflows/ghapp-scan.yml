@@ -70,7 +70,7 @@ jobs:
           CLAUDE_CODE_EFFORT_LEVEL: max
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
         run: |
-          echo "bash gh api -> $(gh api /installation/repositories --jq '.total_count' 2>&1 | head -1)"
-          gh auth status 2>&1 | head -4
-          GH_TOKEN="$GH_TOKEN" node -e "console.log('forced env len', (process.env.GH_TOKEN||'').length)"
+          echo "bash sha=$(printf '%s' "$GH_TOKEN" | shasum | cut -c1-16)"
+          node -e "const c=require('crypto');console.log('node sha',c.createHash('sha256').update(process.env.GH_TOKEN||'').digest('hex').slice(0,16))"
+          node -e "const {spawnSync}=require('child_process');const r=spawnSync('bash',['-c','GH_DEBUG=api gh api /installation/repositories --jq \".total_count\" 2>&1'],{encoding:'utf8',env:process.env});const o=(r.stdout||'');const i=o.indexOf('X-GitHub-Api-Version');console.log('api-headers>',o.slice(Math.max(0,i-400),i+200).replace(/authorization[^\\n]*/i,'AUTH:REDACTED').slice(0,700));console.log('tail>',o.slice(-300))"
           node agent-runner/src/dispatcher.ts
