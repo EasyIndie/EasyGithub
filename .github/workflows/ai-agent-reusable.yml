@@ -49,30 +49,20 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Export pipeline env
-        env:
-          ISSUE: ${{ inputs.issue_number }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
-          RUNNER_TEMP_DIR: ${{ runner.temp }}
-          AGENT: ${{ inputs.agent }}
-          MODEL: ${{ inputs.model }}
-          THINKING: ${{ inputs.thinking }}
-          ATTEMPTS: ${{ inputs.max_attempts }}
-          VERIFY: ${{ inputs.verify_cmd }}
-          DEEPSEEK: ${{ secrets.deepseek_api_key }}
         run: |
           {
             echo "GH_TOKEN=${{ github.token }}"
-            echo "ISSUE_NUMBER=$ISSUE"
-            echo "DEFAULT_BRANCH=$DEFAULT_BRANCH"
-            echo "RUNNER_TEMP=$RUNNER_TEMP_DIR"
-            echo "AGENT=$AGENT"
-            echo "MODEL=$MODEL"
-            echo "THINKING=$THINKING"
-            echo "AI_MAX_ATTEMPTS=$ATTEMPTS"
-            echo "VERIFY_CMD=$VERIFY"
-            echo "DEEPSEEK_API_KEY=$DEEPSEEK"
+            echo "ISSUE_NUMBER=${{ inputs.issue_number }}"
+            echo "DEFAULT_BRANCH=${{ github.event.repository.default_branch || 'main' }}"
+            echo "RUNNER_TEMP=${{ runner.temp }}"
+            echo "AGENT=${{ inputs.agent }}"
+            echo "MODEL=${{ inputs.model }}"
+            echo "THINKING=${{ inputs.thinking }}"
+            echo "AI_MAX_ATTEMPTS=${{ inputs.max_attempts }}"
+            echo "VERIFY_CMD=${{ inputs.verify_cmd }}"
+            echo "DEEPSEEK_API_KEY=${{ secrets.deepseek_api_key }}"
             echo "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic"
-            echo "ANTHROPIC_AUTH_TOKEN=$DEEPSEEK"
+            echo "ANTHROPIC_AUTH_TOKEN=${{ secrets.deepseek_api_key }}"
             echo "ANTHROPIC_MODEL=deepseek-v4-pro[1m]"
             echo "ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro[1m]"
             echo "ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro[1m]"
