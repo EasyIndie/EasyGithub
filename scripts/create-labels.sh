@@ -17,15 +17,14 @@ declare -A COLORS=(
 )
 
 create() {
-  local name="$1" desc="$2"
-  if gh label view "$name" -R "$REPO" >/dev/null 2>&1; then
-    echo "label exists: $name"
-  elif gh label create "$name" -R "$REPO" --description "$desc" --color "${COLORS[$name]}" 2>/dev/null; then
+  local name="$1" desc="$2" out
+  out="$(gh label create "$name" -R "$REPO" --description "$desc" --color "${COLORS[$name]}" 2>&1)"
+  if [ $? -eq 0 ]; then
     echo "label created: $name"
-  elif gh label view "$name" -R "$REPO" >/dev/null 2>&1; then
+  elif printf '%s' "$out" | grep -q "already exists"; then
     echo "label exists: $name"
   else
-    echo "!! failed to create label: $name" >&2
+    printf '%s\n' "$out" >&2
     return 1
   fi
 }
