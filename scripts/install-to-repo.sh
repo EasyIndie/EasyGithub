@@ -106,14 +106,14 @@ jobs:
     if: github.event.label.name == 'ai'
     uses: $HUB/.github/workflows/ai-agent-reusable.yml@$REF
     with:
-      issue-number: \${{ github.event.issue.number }}
+      issue_number: \${{ github.event.issue.number }}
       agent: \${{ vars.AI_AGENT || '' }}
       model: \${{ vars.AI_MODEL || '' }}
       thinking: \${{ vars.AI_THINKING || '' }}
-      max-attempts: \${{ vars.AI_MAX_ATTEMPTS || 3 }}
-      verify-cmd: \${{ vars.VERIFY_CMD || '' }}
+      max_attempts: \${{ vars.AI_MAX_ATTEMPTS || 3 }}
+      verify_cmd: \${{ vars.VERIFY_CMD || '' }}
     secrets:
-      deepseek-api-key: \${{ secrets.DEEPSEEK_API_KEY }}
+      deepseek_api_key: \${{ secrets.DEEPSEEK_API_KEY }}
 EOF
 fi
 

@@ -11,7 +11,7 @@ name: ai-agent-reusable
 on:
   workflow_call:
     inputs:
-      issue-number:
+      issue_number:
         type: number
         required: true
       agent:
@@ -26,16 +26,16 @@ on:
         type: string
         required: false
         default: ""
-      max-attempts:
+      max_attempts:
         type: number
         required: false
         default: 3
-      verify-cmd:
+      verify_cmd:
         type: string
         required: false
         default: ""
     secrets:
-      deepseek-api-key:
+      deepseek_api_key:
         required: true
 
 permissions:
@@ -50,15 +50,15 @@ jobs:
     steps:
       - name: Export pipeline env
         env:
-          ISSUE: ${{ inputs.issue-number }}
+          ISSUE: ${{ inputs.issue_number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
           RUNNER_TEMP_DIR: ${{ runner.temp }}
           AGENT: ${{ inputs.agent }}
           MODEL: ${{ inputs.model }}
           THINKING: ${{ inputs.thinking }}
-          ATTEMPTS: ${{ inputs.max-attempts }}
-          VERIFY: ${{ inputs.verify-cmd }}
-          DEEPSEEK: ${{ secrets.deepseek-api-key }}
+          ATTEMPTS: ${{ inputs.max_attempts }}
+          VERIFY: ${{ inputs.verify_cmd }}
+          DEEPSEEK: ${{ secrets.deepseek_api_key }}
         run: |
           {
             echo "GH_TOKEN=${{ github.token }}"
@@ -108,7 +108,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ai-issue-${{ inputs.issue-number }}-logs
-          path: ${{ runner.temp }}/ai-issue-${{ inputs.issue-number }}
+          name: ai-issue-${{ inputs.issue_number }}-logs
+          path: ${{ runner.temp }}/ai-issue-${{ inputs.issue_number }}
           if-no-files-found: ignore
           retention-days: 7
