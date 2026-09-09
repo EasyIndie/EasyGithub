@@ -10,12 +10,12 @@ name: ghapp-scan
 # Trigger markers for an issue (union):
 #   - label `ai`
 #   - marker `easygh-ai` in the title or body
-# Poll cadence: every 30 min balances latency vs private Actions minutes
-# (Free org ~2000 min/mo; each scan counts ~1 min). Tighten to "*/5 * * * *"
-# during active development if budget allows.
+# Poll cadence: EasyGithub is a PUBLIC repo, so Actions here are free/unmetered.
+# */5 gives ~5-minute latency at zero quota cost. For real-time, see docs/realtime.md
+# (event-driven via webhook is still needed for sub-minute response).
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
