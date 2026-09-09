@@ -1,0 +1,25 @@
+name: zz-reusable3
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        type: number
+        required: true
+      agent:
+        type: string
+        required: false
+        default: ""
+permissions:
+  contents: write
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: export env (inputs only)
+        env:
+          ISSUE: ${{ inputs.issue_number }}
+          AGENT_IN: ${{ inputs.agent }}
+        run: |
+          echo "ISSUE_NUMBER=$ISSUE" >> "$GITHUB_ENV"
+          echo "AGENT=$AGENT_IN" >> "$GITHUB_ENV"
+      - run: echo "zz3 ok issue=$ISSUE_NUMBER agent=$AGENT"
