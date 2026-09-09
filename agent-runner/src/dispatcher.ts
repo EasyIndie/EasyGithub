@@ -29,8 +29,15 @@ function intEnv(name: string, fallback: number, min: number, max: number): numbe
   return Math.min(max, Math.max(min, raw));
 }
 
+function sq(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
 function gh(args: string[]): string {
-  const res = runSync("gh", args);
+  // NOTE: gh spawned directly from node misbehaves on the Actions runner with
+  // app tokens (HTTP 404); invoking it through bash matches the verified path.
+  const cmd = args.map(sq).join(" ");
+  const res = runSync("bash", ["-c", `gh ${cmd}`]);
   if (res.status !== 0) throw new Error(`gh ${args[0] ?? ""} failed: ${res.stderr.trim().slice(0, 600)}`);
   return res.stdout;
 }
