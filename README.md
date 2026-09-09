@@ -68,6 +68,10 @@ compatibility layer needed**:
 
 Remove the `ai-failed` label, then add `ai` again. Removing `ai-failed` is what re-arms the issue.
 
+### PR CI
+
+Every pull request (including AI pipeline PRs) runs `npm run check` via `.github/workflows/ci.yml`.
+
 ### Local dry run (no Actions minutes)
 
 ```bash
