@@ -14,6 +14,9 @@ declare -A COLORS=(
   [agent:pi]="1F6FEB"
   [agent:claude]="5319E7"
   [agent:codex]="BFD4F2"
+  [feature]="C5DEF5"
+  [bug]="D73A4A"
+  [documentation]="0075CA"
 )
 
 create() {
@@ -37,4 +40,7 @@ create ai-done "✅ AI 完成（无代码变更）"
 create "agent:pi" "强制使用 Pi (DeepSeek) 引擎"
 create "agent:claude" "强制使用 Claude Code 引擎"
 create "agent:codex" "强制使用 Codex 引擎"
+create feature "功能/特性（路由到 feature 模板）"
+create bug "缺陷（路由到 bug-fix 模板）"
+create documentation "文档（路由到 feature 模板）"
 echo "done: $REPO"
