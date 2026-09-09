@@ -80,31 +80,31 @@ Every pull request (including AI pipeline PRs) runs `npm run check` via `.github
 
 ### Deploy to another repository (cross-repo reuse)
 
-`GITHUB_TOKEN` cannot write to other repositories. Two modes:
+`GITHUB_TOKEN` cannot write to other repositories. Three deployment modes:
 
-**Default — low-intrusion caller (recommended):** writes a single ~15-line
-`.github/workflows/ai-agent.yml` into the target that calls the centralized
-reusable workflow + composite action in `EasyIndie/EasyGithub`. The runner code
-stays there and updates automatically (@main).
+**Mode 3 — GitHub App (zero-file, non-invasive, recommended).** A GitHub App
+(`easygithub-ai`, install org-wide) lets the hub poll org Issues and write
+branches/PRs in any installed repo. Targets contain **no workflow, no runner,
+no secret**. Mark an Issue for AI by adding the `ai` label or putting
+`easygh-ai` anywhere in its title/body. Polling runs every 5 minutes
+(`.github/workflows/ghapp-scan.yml` → `agent-runner/src/dispatcher.ts`);
+secrets live only in the hub.
+
+**Mode 2 — caller file (low-intrusion).** One ~15-line workflow in the target
+calls the centralized reusable workflow + composite action in EasyGithub.
+
+**Mode 1 — full copy.** `--copy` overlays the whole pipeline into the target.
 
 ```bash
-bash scripts/install-to-repo.sh EasyIndie/<repo>
+bash scripts/install-to-repo.sh EasyIndie/<repo>    # mode 2 caller
+bash scripts/install-to-repo.sh EasyIndie/<repo> --copy   # mode 1
 ```
 
-The installer: 1) creates `ai*`/`agent:*`/routing labels, 2) sets the
-`DEEPSEEK_API_KEY` secret, 3) sets the repo default workflow permissions to
-write, 4) opens a PR with the caller file. After merge, tag an Issue `ai`.
-
-Known platform limitation (EasyIndie org, verified by probing): a reusable
-workflow invoked cross-repo **cannot declare a `permissions` key** (top-level or
-job-level) — it fails at queue time with `startup_failure`. Write access comes
-from the caller job's `permissions` + the repo default=write instead.
-
-**Legacy — full copy:** `--copy` overlays the entire workflow + `agent-runner/`
-into the target (self-contained, no dependency on EasyGithub).
-
-Re-run the installer to refresh. A future V0.4 (GitHub App) will remove even the
-15-line caller file.
+Known platform limitation (verified): a reusable workflow invoked cross-repo
+cannot declare a `permissions` key (fails at queue time); write access comes
+from the caller job permissions + repo default=write. GitHub App installation
+tokens also cannot use the Search API or `gh --paginate` (dispatcher lists
+repos/issues directly).
 
 ### Local dry run (no Actions minutes)
 
