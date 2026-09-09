@@ -53,7 +53,7 @@ function searchCandidates(): Candidate[] {
   const maxRepos = intEnv("MAX_REPOS", 40, 1, 200);
   let repos: string[] = [];
   try {
-    repos = gh(["api", "/installation/repositories", "--paginate", "-f", "per_page=100", "--jq", ".repositories[].full_name"])
+    repos = gh(["api", "/installation/repositories", "--jq", ".repositories[].full_name"])
       .split("\n").map((s) => s.trim()).filter(Boolean);
   } catch (e) {
     console.log(`[dispatch] installation repos failed: ${e instanceof Error ? e.message : e}`);
@@ -67,7 +67,7 @@ function searchCandidates(): Candidate[] {
   for (const repo of repos) {
     let items: Array<{ n: number; t: string; b: string; l: string[] }> = [];
     try {
-      const raw = gh(["api", `repos/${repo}/issues`, "-f", "state=open", "--paginate", "-f", "per_page=100", "--jq", "[.[] | select(.pull_request == null) | {n:.number,t:(.title // \"\"),b:(.body // \"\"),l:[.labels[].name]}]"], );
+      const raw = gh(["api", `repos/${repo}/issues`, "-f", "state=open", "-f", "per_page=100", "--jq", "[.[] | select(.pull_request == null) | {n:.number,t:(.title // \"\"),b:(.body // \"\"),l:[.labels[].name]}]"], );
       items = JSON.parse(raw) as typeof items;
     } catch (e) {
       console.log(`[dispatch] issues list failed for ${repo}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
