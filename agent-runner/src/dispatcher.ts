@@ -73,12 +73,18 @@ function searchCandidates(): Candidate[] {
       console.log(`[dispatch] issues list failed for ${repo}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
       continue;
     }
+    let matched = 0;
     for (const it of items) {
       const labelHit = it.l.includes("ai");
       const markerHit = it.t.includes("easygh-ai") || it.b.includes("easygh-ai");
-      if (labelHit || markerHit) set.set(`${repo}#${it.n}`, { repo, number: it.n });
+      if (labelHit || markerHit) {
+        set.set(`${repo}#${it.n}`, { repo, number: it.n });
+        matched++;
+      }
     }
+    console.log(`[dispatch] ${repo}: ${items.length} open issues, ${matched} matched`);
   }
+
   return [...set.values()];
 }
 
