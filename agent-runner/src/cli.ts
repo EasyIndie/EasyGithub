@@ -26,7 +26,8 @@ export async function ensureAgentCli(name: string): Promise<string | null> {
   if (name === "claude") {
     if (!hasBin("claude")) {
       console.log("[cli] installing Claude Code…");
-      const res = runSync("npm", ["install", "-g", "--ignore-scripts", "@anthropic-ai/claude-code"]);
+      // NOTE: must allow postinstall — the package downloads a native binary.
+      const res = runSync("npm", ["install", "-g", "@anthropic-ai/claude-code"]);
       if (res.status !== 0) return `claude install failed: ${res.stderr.trim().slice(0, 500)}`;
     }
     // Auth/model come from ANTHROPIC_* env (set in the workflow).
@@ -36,7 +37,7 @@ export async function ensureAgentCli(name: string): Promise<string | null> {
   if (name === "codex") {
     if (!hasBin("codex")) {
       console.log("[cli] installing Codex CLI…");
-      const res = runSync("npm", ["install", "-g", "--ignore-scripts", "@openai/codex"]);
+      const res = runSync("npm", ["install", "-g", "@openai/codex"]);
       if (res.status !== 0) return `codex install failed: ${res.stderr.trim().slice(0, 500)}`;
     }
 
