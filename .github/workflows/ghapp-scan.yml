@@ -70,8 +70,7 @@ jobs:
           CLAUDE_CODE_EFFORT_LEVEL: max
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
         run: |
-          echo "bash GH_TOKEN len=${#GH_TOKEN}"
-          echo "bash GITHUB_TOKEN len=${#GITHUB_TOKEN}"
+          echo "bash gh api -> $(gh api /installation/repositories --jq '.total_count' 2>&1 | head -1)"
+          gh auth status 2>&1 | head -4
           GH_TOKEN="$GH_TOKEN" node -e "console.log('forced env len', (process.env.GH_TOKEN||'').length)"
-          node -e "console.log('plain env len', (process.env.GH_TOKEN||'').length)"
           node agent-runner/src/dispatcher.ts
