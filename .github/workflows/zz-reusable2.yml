@@ -1,0 +1,41 @@
+name: zz-reusable2
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        type: number
+        required: true
+      agent:
+        type: string
+        required: false
+        default: ""
+      max_attempts:
+        type: number
+        required: false
+        default: 3
+    secrets:
+      deepseek_api_key:
+        required: true
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: export env (inputs + secret)
+        env:
+          ISSUE: ${{ inputs.issue_number }}
+          DEEPSEEK: ${{ secrets.deepseek_api_key }}
+          AGENT_IN: ${{ inputs.agent }}
+          ATT: ${{ inputs.max_attempts }}
+        run: |
+          {
+            echo "ISSUE_NUMBER=$ISSUE"
+            echo "AGENT=$AGENT_IN"
+            echo "A=$ATT"
+            echo "K=${#DEEPSEEK}"
+          } >> "$GITHUB_ENV"
+      - name: verify
+        run: echo "zz2 ok issue=$ISSUE_NUMBER agent=$AGENT attempts=$A keylen=$K repo=${{ github.repository }}"
