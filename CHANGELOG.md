@@ -8,6 +8,16 @@
 
 （暂无变更）
 
+## [0.1.1] - 2026-09-09
+
+### Changed
+
+- `ai-agent` 工作流的 GitHub Actions 升级到 v7（`actions/checkout`、`actions/setup-node`、`actions/upload-artifact`），消除 Node 20 弃用告警。
+
+### Added
+
+- 新增 `.github/workflows/ci.yml`：pull request 自动运行 `npm run check` 类型检查。
+
 ## [0.1.0] - 2026-09-09
 
 EasyGithub V0.1 里程碑：AI 软件开发流水线正式上线（Issue → GitHub Actions → Agent Runner → Pi → PR）。
