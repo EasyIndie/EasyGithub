@@ -86,7 +86,7 @@ Every pull request (including AI pipeline PRs) runs `npm run check` via `.github
 (`easygithub-ai`, install org-wide) lets the hub poll org Issues and write
 branches/PRs in any installed repo. Targets contain **no workflow, no runner,
 no secret**. Mark an Issue for AI by adding the `ai` label or putting
-`easygh-ai` anywhere in its title/body. Polling runs every 30 minutes (cron in ghapp-scan.yml; tighten during active dev)
+`easygh-ai` anywhere in its title/body. Polling runs every 5 minutes (EasyGithub is public, so these runs are free/unmetered)
 (`.github/workflows/ghapp-scan.yml` → `agent-runner/src/dispatcher.ts`);
 secrets live only in the hub.
 
@@ -147,4 +147,4 @@ Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committi
 
 ## License
 
-Proprietary / all rights reserved for now. Revisit before making the repository public.
+Repository is **public** with **no LICENSE file yet** (default: all rights reserved). Revisit before distributing or accepting contributions.
