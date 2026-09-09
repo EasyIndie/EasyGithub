@@ -66,6 +66,13 @@ if [ "$NO_SECRET" -eq 0 ]; then
   fi
 fi
 
+# default workflow permissions = write (the reusable cannot declare permissions;
+# see .github/workflows/ai-agent-reusable.yml) -------------------------------
+echo "==> set default workflow permissions to write on $TARGET"
+gh api -X PUT "/repos/$TARGET/actions/permissions" \
+  -f enabled=true -f default_workflow_permissions=write >/dev/null 2>&1 \
+  && echo "    permissions: write" || echo "    (could not set; caller job permissions cover it if merged)" >&2
+
 # build the branch -----------------------------------------------------------
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -104,6 +111,10 @@ concurrency:
 jobs:
   agent:
     if: github.event.label.name == 'ai'
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     uses: $HUB/.github/workflows/ai-agent-reusable.yml@$REF
     with:
       issue_number: \${{ github.event.issue.number }}
