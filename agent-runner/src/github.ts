@@ -92,7 +92,7 @@ export function removeLabel(repo: string, number: number, label: string): void {
   const res = runSync("gh", ["issue", "edit", String(number), "-R", repo, "--remove-label", label]);
   if (res.status !== 0) {
     // label may already be gone
-    if (!/could not be found|could not remove|not exist/i.test(res.stderr)) {
+    if (!/could not be found|could not remove|not exist|not found/i.test(res.stderr)) {
       throw new Error(`remove-label ${label} failed: ${res.stderr.trim()}`);
     }
   }
