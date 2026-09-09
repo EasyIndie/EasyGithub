@@ -59,7 +59,39 @@ DEEPSEEK_API_KEY   # DeepSeek 平台 API Key，三个 Agent 共用
 
 三者都复用同一套独立验证与重试循环（`AI_MAX_ATTEMPTS`），验证通过后才提交并创建 PR。
 
+## Claude Code 官方配置参考（DeepSeek 接入）
+
+`.github/workflows/ai-agent.yml` 注入的变量与 DeepSeek 官方接入文档逐项对齐：
+
+| 环境变量 | 值 | 作用 |
+| --- | --- | --- |
+| `ANTHROPIC_BASE_URL` | `https://api.deepseek.com/anthropic` | Anthropic 兼容端点 |
+| `ANTHROPIC_AUTH_TOKEN` | `DEEPSEEK_API_KEY` | 鉴权（Bearer，而非 x-api-key） |
+| `ANTHROPIC_MODEL` | `deepseek-v4-pro[1m]` | 主模型 |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `deepseek-v4-pro[1m]` | opus 档内部请求 |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `deepseek-v4-pro[1m]` | sonnet 档内部请求 |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `deepseek-v4-flash` | haiku 档（轻量/省钱） |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | `deepseek-v4-flash` | 子代理模型 |
+| `CLAUDE_CODE_EFFORT_LEVEL` | `max` | 推理强度 |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `786432` | 上下文自动压缩阈值（tokens） |
+
+要点：
+
+- 模型名 `deepseek-v4-pro[1m]` 中的 `[1m]` 是 **1M 上下文标记**，须连括号整体作为模型 ID 传入。
+- **模型档位映射**（API 层由 DeepSeek 改写）：`claude-opus*` → `deepseek-v4-pro`；`claude-sonnet*` / `claude-haiku*` → `deepseek-v4-flash`。环境变量的显式覆盖优先于此映射。
+- **Web Search 原生支持**，无需额外配置；触发时会产生额外 token 费用。
+- 认证用 `ANTHROPIC_AUTH_TOKEN`（映射为 `Authorization: Bearer`）；不要用 `ANTHROPIC_API_KEY`（走 x-api-key 头）。
+- 实测：claude 客户端可能打印 `unrecognized_model` 告警（客户端本地模型目录不认识 deepseek 名称），不影响请求。
+- 从零安装：`npm install -g @anthropic-ai/claude-code` —— **必须允许 postinstall**（下载原生二进制），不要用 `--ignore-scripts`。
+
+参考：<https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code>
+
 ## 本地运行
 
 `bash scripts/dev-run.sh <owner/repo> <issue-number>` 固定使用 `AGENT=pi`。非 Pi Agent 的
 自动安装/配置仅在 CI 中执行，本地运行 `claude` / `codex` 需手动安装并配置对应 CLI。
+
+## 官方参考
+
+- Claude Code 接入（Anthropic 兼容端点）：<https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code>
+- Codex 接入（Responses 端点 / ~/.codex 配置）：<https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex>
