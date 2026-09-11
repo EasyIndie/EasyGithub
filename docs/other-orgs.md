@@ -92,6 +92,13 @@ Fork `EasyIndie/EasyGithub`，或 `git clone` 后推到自己的组织（public 
 | `EASYGH_ORG` | variable | 目标组织名（**已参数化**，默认 `EasyIndie`） |
 | `EASYGH_REPO_FILTER` | variable（可选） | 逗号分隔仓库白名单，如 `Org/a,Org/b` |
 | `EASYGH_MAX_ISSUES` | variable（可选） | 每次运行最多处理几个 Issue（默认 4） |
+| `EASYGH_VERIFY_CMDS` | variable（可选） | JSON map，零文件仓库的验证命令；覆盖 `agent-runner/config/verify.json` |
+
+> **验证命令（零文件目标）**：因为目标仓库没有自己的 variables，App 模式从 **hub** 取验证配置：
+> 提交在 `agent-runner/config/verify.json`（如 `{"Org/repo":{"cmd":"cargo test","timeout_ms":900000}}`），
+> 或用 hub variable `EASYGH_VERIFY_CMDS`（同结构，优先级更高）。
+> 未配置时自动检测：`package.json` 脚本 → `cargo test` → `go test ./...` → 跳过。
+> Mode 2 则在**目标仓库**设 `VERIFY_CMD`（caller 已接好 `vars.VERIFY_CMD`）。
 
 ```bash
 gh secret set EASYGH_APP_PRIVATE_KEY -R <hub>/<repo> < app.private-key.pem

@@ -7,6 +7,7 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 - `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`; cross-repo dispatcher: `agent-runner/src/dispatcher.ts`.
 - `agent-runner/prompts/` — task templates rendered by the runner (bug-fix / feature / review).
 - `agent-runner/config/agents.json` — agent routing rules.
+- `agent-runner/config/verify.json` — per-repo verification commands for zero-file (App mode) targets; overridable by hub variable `EASYGH_VERIFY_CMDS`.
 - `.github/workflows/ai-agent.yml` — the pipeline workflow (self-host).
 - `.github/workflows/ai-agent-reusable.yml` + `.github/actions/agent-runner` — reusable cross-repo mode (mode 2).
 - `.github/workflows/ghapp-scan.yml` + `scripts/ghapp-token.mjs` — GitHub-App zero-file mode (mode 3).

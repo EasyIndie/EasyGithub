@@ -49,10 +49,15 @@ Routing: issue label `agent:<name>` > repo variable `AI_AGENT` > rules in
 - One provider API key stored as a repo secret: `DEEPSEEK_API_KEY` (DeepSeek V4; see below).
   Repository variables (optional): `AI_MODEL` (default `deepseek-v4-flash`), `AI_THINKING` (default `high`),
   `AI_MAX_ATTEMPTS` (default `3`, verification retries), `VERIFY_CMD` (override the check
-  command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`),
+  command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`, then
+  `cargo test` / `go test ./...` by language),
   `AI_AGENT` (force a specific agent for every run; default: auto-route).
   On EasyGithub itself (public repo) all of this is already configured; other repos need the
   installer (`install-to-repo.sh`) or the App to set it up.
+- **Zero-file targets (App mode)** get their verification command from the hub, since the target
+  has no variables of its own: `agent-runner/config/verify.json` (committed, reviewable), e.g.
+  `{"EasyIndie/EasyBot": { "cmd": "cargo test", "timeout_ms": 900000 }}`; the hub variable
+  `EASYGH_VERIFY_CMDS` (same JSON shape) overrides the file when set.
 
 ### Model / provider
 
