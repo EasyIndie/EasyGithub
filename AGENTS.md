@@ -17,6 +17,9 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 ## Checks
 
 - Type check: `npm run typecheck` (root, runs the workspace).
+- Workflow lint: `.github/workflows/ci.yml` runs [actionlint](https://github.com/rhysd/actionlint)
+  (pinned version) on every PR — catches YAML/semantics errors in `*.yml` (an unquoted `: ` in a
+  step name once disabled `ghapp-scan`'s triggers, so keep this green).
 - The pipeline independently verifies agent output with `npm run check` before opening a PR
   (`AI_MAX_ATTEMPTS` controls retries).
 - There is no automated test suite yet.
