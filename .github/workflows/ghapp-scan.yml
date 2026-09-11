@@ -69,7 +69,7 @@ jobs:
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
         run: node agent-runner/src/dispatcher.ts
 
-      - name: Upload dispatch logs (per-issue: TASK.md, agent JSONL, verify output)
+      - name: Upload dispatch logs (TASK.md, agent JSONL, verify output)
         if: always()
         uses: actions/upload-artifact@v7
         with:
