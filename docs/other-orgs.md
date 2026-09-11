@@ -99,6 +99,15 @@ Fork `EasyIndie/EasyGithub`，或 `git clone` 后推到自己的组织（public 
 > 或用 hub variable `EASYGH_VERIFY_CMDS`（同结构，优先级更高）。
 > 未配置时自动检测：`package.json` 脚本 → `cargo test` → `go test ./...` → 跳过。
 > Mode 2 则在**目标仓库**设 `VERIFY_CMD`（caller 已接好 `vars.VERIFY_CMD`）。
+>
+> **调优（实测数据，EasyBot Rust workspace）**：一次真实运行中 `cargo test` 耗时
+> 首次 ~1 分钟、修复后重跑 ~2.5 分钟；真正的大头是 AI agent（4~23 分钟）。
+> 所以**默认保留全量 `cargo test`**（覆盖最完整）。只有在确认编译确实成为瓶颈时才收窄：
+> `cargo test -p <crate>`（仅测指定 crate，会漏掉其它 crate/bin 的回归）或
+> `cargo clippy --all-targets -- -D warnings`（静态检查，快但不跑测试）。
+> 大仓也可把 `timeout_ms` 调高（默认 900000 = 15 分钟）。
+> 另外：每次运行都会上传 `ghapp-dispatch-logs` artifact（TASK.md / `pi-*.jsonl` / `verify-*.log`），
+> 排查“第一次为什么没过验证”直接下载即可。
 
 ```bash
 gh secret set EASYGH_APP_PRIVATE_KEY -R <hub>/<repo> < app.private-key.pem

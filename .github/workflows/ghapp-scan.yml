@@ -68,3 +68,12 @@ jobs:
           CLAUDE_CODE_EFFORT_LEVEL: max
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
         run: node agent-runner/src/dispatcher.ts
+
+      - name: Upload dispatch logs (per-issue: TASK.md, agent JSONL, verify output)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ghapp-dispatch-logs
+          path: ${{ runner.temp }}/ghapp-dispatch/**
+          if-no-files-found: ignore
+          retention-days: 7
