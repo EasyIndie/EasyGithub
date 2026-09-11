@@ -27,6 +27,13 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 - Changes to `.github/workflows/ai-agent.yml` or pipeline semantics are deliberate: this pipeline runs itself, so avoid accidental recursion.
 - Pipeline branches and PRs use the `ai/issue-<n>` naming scheme.
 
+## License
+
+Business Source License 1.1 (see `LICENSE`). External contributions are not
+accepted yet (a CLA is required first). Keep the BUSL parameters intact when
+editing `LICENSE` (Licensor: EasyIndie, Change Date: 2030-09-09, Change
+License: Apache-2.0).
+
 ## Labels used by the pipeline
 
 `ai` (trigger), `ai-running`, `ai-pr`, `ai-failed`, `ai-done`. Agent override: `agent:<name>` (pi/claude/codex).

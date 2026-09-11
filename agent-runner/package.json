@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Agent Runner: schedules AI coding agents (Pi) against GitHub Issues and turns results into PRs",
+  "license": "BUSL-1.1",
   "engines": {
     "node": ">=22.19.0"
   },

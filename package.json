@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "AI software development pipeline: Issue -> GitHub Actions -> Agent Runner -> Pi -> PR",
+  "license": "BUSL-1.1",
   "type": "module",
   "engines": {
     "node": ">=22.19.0"

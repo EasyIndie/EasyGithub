@@ -186,4 +186,10 @@ Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committi
 
 ## License
 
-Repository is **public** with **no LICENSE file yet** (default: all rights reserved). Revisit before distributing or accepting contributions.
+**Business Source License 1.1** (BUSL-1.1) — see [`LICENSE`](LICENSE).
+
+- 源码公开可见；**非生产用途、组织内部使用（含用本流水线开发你自己的项目）免费**。
+- **禁止**将 EasyGithub 本身（或衍生版）作为托管/付费服务提供给第三方（*AI Pipeline Service*）——此类使用需取得商业授权。
+- Change Date `2030-09-09`；到期后自动转为 **Apache License 2.0**。
+- 商业授权 / 合作咨询：在 [Issues](https://github.com/EasyIndie/EasyGithub/issues) 留言或联系 EasyIndie 组织所有者。
+- **贡献条款**：目前**未开放外部代码贡献**（BUSL 下需先签署 CLA 才能合并外部 PR，以保证将来仍可调整协议/双许可）。欢迎以 Issue 形式反馈。
