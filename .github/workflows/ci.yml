@@ -33,5 +33,5 @@ jobs:
       # Pinned to v1.7.12 (script + download verified by checksum in the script).
       - name: Lint GitHub Actions workflows
         run: |
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) v1.7.12
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
           ./actionlint -color
