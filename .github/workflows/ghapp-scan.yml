@@ -3,9 +3,10 @@ name: ghapp-scan
 # GitHub-App (zero-file, non-invasive) cross-repo mode.
 #
 # Runs on a schedule in the hub repository. A GitHub App installation token
-# (org-wide, created by actions/create-github-app-token) lets the dispatcher
-# read issues and write branches/PRs in ANY installed EasyIndie repository,
-# without adding any workflow/runner file to those repos.
+# (org-wide) lets the dispatcher read issues and write branches/PRs in ANY
+# repository of the installation's org, without adding any workflow/runner file
+# to those repos. Target org is `vars.EASYGH_ORG` (default EasyIndie), so a fork
+# / other organization can reuse this unchanged — see docs/other-orgs.md.
 #
 # Trigger markers for an issue (union):
 #   - label `ai`
@@ -40,14 +41,15 @@ jobs:
         env:
           EASYGH_APP_ID: ${{ vars.EASYGH_APP_ID }}
           EASYGH_APP_PRIVATE_KEY: ${{ secrets.EASYGH_APP_PRIVATE_KEY }}
-          ORG: EasyIndie
+          ORG: ${{ vars.EASYGH_ORG || 'EasyIndie' }}
         run: node scripts/ghapp-token.mjs
 
       - name: Dispatch AI issues across org
         env:
           GH_TOKEN: ${{ steps.mint.outputs.token }}
-          ORG: EasyIndie
-          MAX_ISSUES: "4"
+          ORG: ${{ vars.EASYGH_ORG || 'EasyIndie' }}
+          REPO_FILTER: ${{ vars.EASYGH_REPO_FILTER }}
+          MAX_ISSUES: ${{ vars.EASYGH_MAX_ISSUES || '4' }}
           RUNNER_TEMP: ${{ runner.temp }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           # Claude Code agent -> DeepSeek (Anthropic-compatible endpoint)
