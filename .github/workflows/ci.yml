@@ -1,6 +1,7 @@
 name: ci
 
-# Minimal PR CI: type-check the workspace on every pull request.
+# Minimal PR CI: type-check the workspace + lint GitHub Actions workflows on
+# every pull request.
 # AI pipeline PRs (branch prefix ai/issue-*) get checked too — this is the
 # referee for the "CI failure -> feed back to agent" loop (V0.3).
 on:
@@ -23,3 +24,14 @@ jobs:
         run: npm ci
       - name: Type check
         run: npm run check
+
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # Pinned to v1.7.12 (script + download verified by checksum in the script).
+      - name: Lint GitHub Actions workflows
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color
