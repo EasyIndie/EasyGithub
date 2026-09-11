@@ -19,9 +19,10 @@ export interface VerifyResult {
  * Command resolution order:
  *   1. env VERIFY_CMD (explicit override, e.g. "npm run lint && npm test")
  *   2. first existing script among check / verify / test / lint in package.json
- *   3. none -> skipped (treated as pass, logged)
+ *   3. language heuristics (Cargo.toml -> cargo test, go.mod -> go test ./...)
+ *   4. none -> skipped (treated as pass, logged)
  */
-async function resolveCommand(workDir: string): Promise<string | null> {
+export async function resolveCommand(workDir: string): Promise<string | null> {
   const override = process.env.VERIFY_CMD?.trim();
   if (override) return override;
   try {
@@ -33,7 +34,14 @@ async function resolveCommand(workDir: string): Promise<string | null> {
       if (scripts[name] !== undefined) return `npm run ${name}`;
     }
   } catch {
-    // no package.json -> nothing to verify
+    // no package.json (or unreadable) -> try language heuristics
+  }
+  // Non-Node repositories: only run a check when the toolchain file is present
+  // and the command is self-contained (dependency fetch is part of the command).
+  if (existsSync(join(workDir, "Cargo.toml"))) return "cargo test";
+  if (existsSync(join(workDir, "go.mod"))) return "go test ./...";
+  if (existsSync(join(workDir, "pytest.ini")) || existsSync(join(workDir, "tox.ini"))) {
+    return "python -m pytest -q";
   }
   return null;
 }
@@ -54,7 +62,8 @@ async function ensureDeps(workDir: string, timeoutMs: number): Promise<{ command
 }
 
 export async function runVerify(workDir: string): Promise<VerifyResult> {
-  const timeoutMs = Number(process.env.VERIFY_TIMEOUT_MS ?? 10 * 60 * 1000);
+  const parsedTimeout = Number(process.env.VERIFY_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 10 * 60 * 1000;
   const deps = await ensureDeps(workDir, timeoutMs);
   if (!deps.ok) {
     return {

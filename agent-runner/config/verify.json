@@ -1,0 +1,3 @@
+{
+  "EasyIndie/EasyBot": { "cmd": "cargo test", "timeout_ms": 900000 }
+}

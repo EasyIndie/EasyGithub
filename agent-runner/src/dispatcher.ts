@@ -1,6 +1,7 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { runAsync, runSync } from "./util/exec.ts";
 
 /**
@@ -17,6 +18,58 @@ import { runAsync, runSync } from "./util/exec.ts";
  *   - Issue title or body contains the marker `easygh-ai`
  */
 const HANDLED = ["ai-running", "ai-pr", "ai-failed", "ai-done"];
+
+/**
+ * Per-repo verification for zero-file (App mode) targets.
+ *
+ * Sources (env wins over file):
+ *   1. hub repo variable `EASYGH_VERIFY_CMDS` — JSON map (ops override)
+ *   2. `agent-runner/config/verify.json` — committed, reviewable default
+ * Both accept either a string ({ "Org/repo": "cargo test" }) or an object
+ * ({ "Org/repo": { "cmd": "cargo test", "timeout_ms": 900000 } }).
+ * Targets keep no pipeline files at all.
+ */
+export interface VerifyConfig {
+  cmd?: string;
+  timeoutMs?: number;
+}
+
+let cachedVerifyMap: Record<string, unknown> | undefined;
+
+function verifyMap(): Record<string, unknown> {
+  if (cachedVerifyMap) return cachedVerifyMap;
+  let map: Record<string, unknown> = {};
+  try {
+    const fileUrl = new URL("../config/verify.json", import.meta.url);
+    const parsed = JSON.parse(readFileSync(fileUrl, "utf8")) as unknown;
+    if (parsed && typeof parsed === "object") map = parsed as Record<string, unknown>;
+  } catch {
+    // no config file -> fine
+  }
+  const raw = process.env.EASYGH_VERIFY_CMDS?.trim();
+  if (raw) {
+    try {
+      const envMap = JSON.parse(raw) as unknown;
+      if (envMap && typeof envMap === "object") map = { ...map, ...(envMap as Record<string, unknown>) };
+    } catch {
+      console.log("[dispatch] EASYGH_VERIFY_CMDS is not valid JSON; ignoring");
+    }
+  }
+  cachedVerifyMap = map;
+  return map;
+}
+
+export function verifyFor(repo: string): VerifyConfig {
+  const value = verifyMap()[repo];
+  if (typeof value === "string" && value.trim()) return { cmd: value };
+  if (value && typeof value === "object") {
+    const obj = value as { cmd?: unknown; timeout_ms?: unknown };
+    const cmd = typeof obj.cmd === "string" && obj.cmd.trim() ? obj.cmd : undefined;
+    const timeoutMs = typeof obj.timeout_ms === "number" && obj.timeout_ms > 0 ? obj.timeout_ms : undefined;
+    return { cmd, timeoutMs };
+  }
+  return {};
+}
 
 interface Candidate {
   repo: string; // owner/name
@@ -133,6 +186,7 @@ async function processIssue(c: Candidate): Promise<void> {
   const runDir = join(tmpBase, `logs-${c.repo.replace("/", "-")}-${c.number}`);
   const timeoutMs = Number(process.env.PI_TIMEOUT_MS ?? 40 * 60 * 1000);
 
+  const verify = verifyFor(c.repo);
   const res = await runAsync("node", [runnerMain], {
     cwd: workDir,
     env: {
@@ -142,6 +196,8 @@ async function processIssue(c: Candidate): Promise<void> {
       WORK_DIR: workDir,
       RUNNER_TEMP: runDir,
       DEFAULT_BRANCH: defaultBranch,
+      ...(verify.cmd ? { VERIFY_CMD: verify.cmd } : {}),
+      ...(verify.timeoutMs ? { VERIFY_TIMEOUT_MS: String(verify.timeoutMs) } : {}),
     },
     timeoutMs,
     onStdout: (s) => process.stdout.write(s),
@@ -170,7 +226,11 @@ async function main(): Promise<void> {
   console.log(`[dispatch] done (processed ${processed})`);
 }
 
-main().catch((err) => {
-  console.error("[dispatch] fatal:", err);
-  process.exitCode = 1;
-});
+// Only run when executed directly (keeps this module safely importable/testable).
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main().catch((err) => {
+    console.error("[dispatch] fatal:", err);
+    process.exitCode = 1;
+  });
+}
