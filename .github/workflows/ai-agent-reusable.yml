@@ -58,6 +58,9 @@ jobs:
             echo "MODEL=${{ inputs.model }}"
             echo "THINKING=${{ inputs.thinking }}"
             echo "AI_MAX_ATTEMPTS=${{ inputs.max_attempts }}"
+            echo "AGENT_BUDGET_MS=4500000"
+            echo "PI_TIMEOUT_MS=900000"
+            echo "VERIFY_TIMEOUT_MS=600000"
             echo "VERIFY_CMD=${{ inputs.verify_cmd }}"
             echo "DEEPSEEK_API_KEY=${{ secrets.deepseek_api_key }}"
             echo "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic"
@@ -71,17 +74,9 @@ jobs:
             echo "CLAUDE_CODE_AUTO_COMPACT_WINDOW=786432"
           } >> "$GITHUB_ENV"
 
-      - name: Skip already-handled issues
-        run: |
-          LABELS=$(gh issue view "$ISSUE_NUMBER" -R "$GITHUB_REPOSITORY" --json labels -q '[.labels[].name]')
-          for x in ai-running ai-pr ai-failed ai-done; do
-            if echo "$LABELS" | grep -q "\"$x\""; then
-              echo "issue already handled ($x); skipping."
-              exit 0
-            fi
-          done
-          echo "issue is fresh; proceeding."
-
+      # The runner filters handled issues and takes the atomic claim lock, so no
+      # step-level skip is needed here (a step-level `exit 0` would not stop the
+      # checkout below anyway).
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
