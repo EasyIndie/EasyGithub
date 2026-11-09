@@ -38,6 +38,9 @@
 - 熔断闭锁：`ai-incident` 打开期间该仓库不再自动合并（关闭 Issue 即恢复），`hasOpenIncident()` 在 arm auto-merge 前检查。
 - 周报覆盖多仓库：`retro.ts --repos a/b,c/d` / `EASYGH_RETRO_REPOS`，按仓库分区统计。
 - 开关：`EASYGH_WATCHDOG`（默认 on）。
+- 多组织 `EASYGH_ORGS`（逗号分隔）：`ghapp-scan` 按组织做 matrix，每个组织独立签发 installation token。
+- `ai-decide` 新增 `repo` 输入：hub 可直接 retry/cancel/answer 目标组织的 Issue（App token 执行）。
+- 看护在读不到 workflow runs（App 缺 `Actions: read`）时显式 `skipped`，不再静默报健康。
 - hub 的 `ai-watch` 改为调用同一个 `watch.ts`（新增 CLI 与 `--dry-run`），与目标仓库共用一套判定逻辑。
 
 ### Changed
