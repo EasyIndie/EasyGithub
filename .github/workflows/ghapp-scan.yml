@@ -55,6 +55,9 @@ jobs:
           DISPATCH_BUDGET_MS: ${{ vars.EASYGH_DISPATCH_BUDGET_MS || '3000000' }}
           AGENT_BUDGET_MS: ${{ vars.EASYGH_AGENT_BUDGET_MS || '2400000' }}
           PI_TIMEOUT_MS: "900000"
+          AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
+          AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
+          AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
           # Per-repo verification for zero-file targets (JSON map, hub-side);
           # overrides the committed agent-runner/config/verify.json.
           # {"EasyIndie/EasyBot":"cargo test"}   (empty -> file/auto-detect)

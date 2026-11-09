@@ -54,6 +54,11 @@ jobs:
           # V0.3: independent verification inside the ai-agent workflow
           # (avoids the approval gate GitHub applies to bot-created PRs).
           AI_MAX_ATTEMPTS: ${{ vars.AI_MAX_ATTEMPTS || '3' }}
+          # Delivery automation: off | probation | on (default off = humans merge).
+          AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
+          AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
+          # cc'd when the agent needs a decision (ai-needs-input).
+          AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
           # optional: override the auto-detected check command
           # VERIFY_CMD: "npm run lint && npm test"
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
