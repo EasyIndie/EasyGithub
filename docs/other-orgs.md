@@ -135,21 +135,103 @@ gh run view <run-id> -R <hub>/<repo> --log | grep -E "\[dispatch\] (org=|accessi
 
 ---
 
-## 路线 C：一个 hub 服务多组织（需小改造）
+## 路线 C：一个 hub 服务多个组织（已支持）
 
-现状：`scripts/ghapp-token.mjs` 按 `ORG` 找一个安装并签发该安装的 token，`dispatcher.ts` 用
-`/installation/repositories` 列仓库——**一次运行只覆盖一个组织的安装**。
+`ghapp-scan` 现在按 `vars.EASYGH_ORGS`（逗号分隔）做 **matrix**：每个组织一个 job，各自签发
+该组织安装的 installation token；`dispatcher` 用 `/installation/repositories` 只能看到该安装
+范围内的仓库，所以组织之间天然隔离，凭证也不用按组织分开（同一个 App）。
 
-多组织有两种做法：
+### 一次性前提
 
-1. **matrix（各组织独立 App）**：在 `ghapp-scan.yml` 把 `scan` job 改成
-   `strategy.matrix.org: [OrgA, OrgB]`，per-org 提供 App id/key（用带后缀的 secret 名或 environment）。
-2. **一个 App 装到多个组织**：App 所有者设为 EasyIndie 且允许任意账号安装；matrix 只切 `ORG`，
-   凭证共用（App 私钥集中托管 → 风险与信任更高，仅适合邀请制合作方）。
+1. **App 允许任意账号安装**：App settings → "Where can this GitHub App be installed?" = *Any account*。
+2. **App 仓库权限**（Repository permissions）：
 
-无论哪种，都需要决定：**DeepSeek 费用归谁**、**Actions 分钟归谁**、**App 私钥由谁托管**。
+   | 权限 | 级别 | 用途 | 缺了会怎样 |
+   | --- | --- | --- | --- |
+   | Contents | Read and write | 推分支、建 PR、revert | 无法交付 |
+   | Issues | Read and write | 标签、评论、`ai-incident` | 无法回写状态 |
+   | Pull requests | Read and write | 建 PR、`gh pr merge --auto` | 自动合并失效 |
+   | Actions | **Read-only** | 跨仓库看护读 workflow runs | 看护退化为 `skipped`（日志会写 "app needs Actions: read"） |
+   | Workflows | Read and write（可选） | 万一需要改 workflow 文件 | 改 workflow 的推送会被拒（策略层已禁止） |
+   | Metadata | Read-only（自动） | 基础读取 | — |
 
----
+   改完权限后，**每个组织需要在安装页重新批准**（GitHub 会提示）。
+3. **在每个目标组织安装 App**：`https://github.com/apps/easygithub-ai/installations/new`
+   → 选组织 → All repositories（或选定）。安装需要该组织 **admin**。
+4. **hub 变量**：
+   ```bash
+   gh variable set EASYGH_ORGS -R EasyIndie/EasyGithub --body "EasyIndie,OrzMC,OrzGeeker"
+   # EASYGH_ORG 单组织写法仍兼容（EASYGH_ORGS 优先）
+   ```
+
+机密（`EASYGH_APP_ID` / `EASYGH_APP_PRIVATE_KEY` / `DEEPSEEK_API_KEY`）仍然**只放在 hub**，
+不需要给目标组织任何 secret——这正是零文件模式的意义。
+
+### 验证
+
+```bash
+gh workflow run ghapp-scan -R EasyIndie/EasyGithub
+gh run view <run-id> -R EasyIndie/EasyGithub --log | grep -E "matrix:|\[watch\]|\[dispatch\] (org=|accessible repos)"
+# 期望：
+#   matrix: ["EasyIndie","OrzMC","OrzGeeker"]
+#   [dispatch] org=OrzMC accessible repos: 22
+#   [watch] OrzMC/<repo>: skipped — no ai-pr label (pipeline never used here)
+```
+
+触发一个任务：在目标组织任意仓库给 Issue 打 `ai` 标签（或成员在标题/正文写 `easygh-ai`）。
+
+### 跨组织的人工操作（`ai-decide`）
+
+`ai-decide` 现在带 `repo` 输入，hub 可以直接操作目标组织的 Issue：
+
+```bash
+gh workflow run ai-decide -R EasyIndie/EasyGithub \
+  -f repo=OrzMC/<repo> -f issue=42 -f action=retry
+
+# 回答 AI 的问题
+gh workflow run ai-decide -R EasyIndie/EasyGithub \
+  -f repo=OrzMC/<repo> -f issue=42 -f action=answer -f note="用方案 B，别动 public API"
+
+# 取消卡住的运行
+gh workflow run ai-decide -R EasyIndie/EasyGithub \
+  -f repo=OrzMC/<repo> -f issue=42 -f action=cancel
+```
+
+授权检查针对 **hub** 的协作者（控制平面），动作通过目标组织的 installation token 执行；
+`set-automerge` 需要 `EASYGH_PR_TOKEN`（admin PAT），因为仓库变量 API 不接受 App token。
+
+### 每个目标仓库仍需自己配的合并策略
+
+hub 不能修改别人的仓库设置，所以 auto-merge 开关与分支保护要在目标仓库里配：
+
+```bash
+# 1) 允许 auto-merge（否则低风险 PR 只会停在那里）
+gh api -X PATCH repos/OrzMC/<repo> -F allow_auto_merge=true
+
+# 2) 单人维护者：0 批准 + 必需检查（否则自己的 PR 无法自我批准）
+gh api -X PATCH repos/OrzMC/<repo>/branches/main/protection/required_pull_request_reviews \
+  -F required_approving_review_count=0 -F dismiss_stale_reviews=true
+
+# 3) 必需检查：用目标仓库自己的 CI（没有就跳过；无必需检查时，低风险 PR
+#    在 hub 侧验证通过后会被 auto-merge 直接合并）
+gh api -X PUT repos/OrzMC/<repo>/branches/main/protection/required_status_checks \
+  -f strict=true -f 'contexts[]=<job-name>'
+```
+
+### 配额与成本
+
+- `AI_MAX_PRS_PER_DAY`：**按仓库**统计（该仓库最近 24h 的 `[AI]` PR 数）。
+- `MAX_ISSUES`：**每个组织每次扫描**的上限；matrix 后总处理量 ≈ 组织数 × MAX_ISSUES。
+- Actions：hub 是 public（免费）；目标仓库的 **PR CI** 消耗**目标组织**的分钟数。
+- DeepSeek 费用集中在 hub 的 key（所有组织共用）。
+
+### 常见坑
+
+- matrix 里某个组织没有安装 → 该 job 在 `Mint ... token` 步失败（`no installation found for org X`），
+  其它组织不受影响（`fail-fast: false`）。
+- 安装时选了 "Only select repositories" → `accessible repos` 里只有选中的仓库。
+- 看护一直是 `skipped — cannot read workflow runs` → App 缺 `Actions: Read-only`（改权限后要在每个组织重新批准）。
+- `set-automerge` 报 404/403 → 没有 `EASYGH_PR_TOKEN`，或该 PAT 不是 hub 的 admin。
 
 ## 平台限制速查（均为实测）
 
@@ -170,6 +252,7 @@ gh run view <run-id> -R <hub>/<repo> --log | grep -E "\[dispatch\] (org=|accessi
 [ ] DeepSeek key 就位
 [ ] 路线 A：安装器已跑 + PR 已合并 + ai 标签可触发
 [ ] 路线 B：App 已建/已装 + 4 个 secret/variable 已配 + EASYGH_ORG 正确
-[ ] 路线 C：multi-org 方案与费用/密钥归属已确定
+[ ] 路线 C：`EASYGH_ORGS` 已设 + App 已装到每个组织 + App 有 `Actions: Read-only`
+[ ] 路线 C：目标仓库已开 `allow_auto_merge` + 0 批准（单人）+ 必需检查
 [ ] 验证：Issue 标签流 ai→ai-running→ai-pr，或 ghapp-scan 日志出现 === Org/repo #N ===
 ```

@@ -5,8 +5,13 @@ name: ghapp-scan
 # Runs on a schedule in the hub repository. A GitHub App installation token
 # (org-wide) lets the dispatcher read issues and write branches/PRs in ANY
 # repository of the installation's org, without adding any workflow/runner file
-# to those repos. Target org is `vars.EASYGH_ORG` (default EasyIndie), so a fork
-# / other organization can reuse this unchanged — see docs/other-orgs.md.
+# to those repos.
+#
+# Multiple organizations: `vars.EASYGH_ORGS` is a comma-separated list
+# (e.g. "EasyIndie,OrzMC,OrzGeeker"). Each org gets its own matrix job and its
+# own installation token, so one hub can serve several organizations without
+# sharing per-org credentials (`vars.EASYGH_ORG` is still honoured as a
+# single-org fallback).
 #
 # Trigger markers for an issue (union):
 #   - label `ai`
@@ -27,36 +32,68 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      orgs: ${{ steps.list.outputs.orgs }}
+    steps:
+      - name: Build the organization matrix
+        id: list
+        env:
+          ORGS: ${{ vars.EASYGH_ORGS }}
+          ORG: ${{ vars.EASYGH_ORG }}
+        run: |
+          set -euo pipefail
+          RAW="${ORGS:-${ORG:-EasyIndie}}"
+          JSON=$(printf '%s' "$RAW" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0)) | unique')
+          echo "orgs=${JSON}" >> "$GITHUB_OUTPUT"
+          echo "matrix: ${JSON}"
+
   scan:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        org: ${{ fromJSON(needs.plan.outputs.orgs) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
 
-      - name: Mint GitHub App installation token
+      - name: Mint GitHub App installation token (${{ matrix.org }})
         id: mint
+        # Tolerance for orgs that are configured but not installed yet: the job
+        # stays green and says so, instead of failing every 5 minutes.
+        continue-on-error: true
         env:
           EASYGH_APP_ID: ${{ vars.EASYGH_APP_ID }}
           EASYGH_APP_PRIVATE_KEY: ${{ secrets.EASYGH_APP_PRIVATE_KEY }}
-          ORG: ${{ vars.EASYGH_ORG || 'EasyIndie' }}
+          ORG: ${{ matrix.org }}
         run: node scripts/ghapp-token.mjs
 
-      - name: Dispatch AI issues across org
+      - name: Skip ${{ matrix.org }} (app not installed)
+        if: steps.mint.outcome != 'success'
+        run: echo "::notice title=ghapp-scan::organization ${{ matrix.org }} has no easygithub-ai installation; skipping"
+
+      - name: Dispatch AI issues in ${{ matrix.org }}
+        if: steps.mint.outcome == 'success'
         env:
           GH_TOKEN: ${{ steps.mint.outputs.token }}
-          ORG: ${{ vars.EASYGH_ORG || 'EasyIndie' }}
+          ORG: ${{ matrix.org }}
           REPO_FILTER: ${{ vars.EASYGH_REPO_FILTER }}
           MAX_ISSUES: ${{ vars.EASYGH_MAX_ISSUES || '4' }}
           # Wall-clock budget per scan (job timeout is 60 min) and per issue
           # (agent session + retries). Keeps a slow target from eating the queue.
           DISPATCH_BUDGET_MS: ${{ vars.EASYGH_DISPATCH_BUDGET_MS || '3000000' }}
-          # Cross-repo post-merge watchdog (targets cannot host ai-watch themselves).
-          EASYGH_WATCHDOG: ${{ vars.EASYGH_WATCHDOG || 'on' }}
           AGENT_BUDGET_MS: ${{ vars.EASYGH_AGENT_BUDGET_MS || '2400000' }}
           PI_TIMEOUT_MS: "900000"
+          # Cross-repo post-merge watchdog (targets cannot host ai-watch themselves).
+          EASYGH_WATCHDOG: ${{ vars.EASYGH_WATCHDOG || 'on' }}
           AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
           AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
           AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
@@ -79,11 +116,11 @@ jobs:
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
         run: node agent-runner/src/dispatcher.ts
 
-      - name: Upload dispatch logs (TASK.md, agent JSONL, verify output)
+      - name: Upload dispatch logs (${{ matrix.org }})
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ghapp-dispatch-logs
+          name: ghapp-dispatch-${{ matrix.org }}
           path: ${{ runner.temp }}/ghapp-dispatch/**
           if-no-files-found: ignore
           retention-days: 7

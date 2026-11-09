@@ -1,6 +1,6 @@
 name: ai-decide
 
-# The human interface for the pipeline.
+# The human interface for the pipeline, for the hub and for zero-file targets.
 #
 # Everything the pipeline cannot decide alone is expressed as a workflow
 # dispatch with an explicit, auditable action:
@@ -10,8 +10,10 @@ name: ai-decide
 #   waive          record a human exception (audit only, never bypasses policy)
 #   set-automerge  switch AI_AUTOMERGE between off / probation / on
 #
-# Only repository writers (admin / maintain / write) may use it. Every action
-# leaves an `easygh-decision` comment on the issue.
+# Authorization is checked against the HUB repository (the control plane), then
+# an installation token for the target repository's organization is minted, so
+# a single hub can operate on EasyIndie / OrzMC / OrzGeeker issues. Every action
+# leaves an `easygh-decision` comment on the target issue.
 on:
   workflow_dispatch:
     inputs:
@@ -29,6 +31,11 @@ on:
           - answer
           - waive
           - set-automerge
+      repo:
+        description: "Target repository (owner/name); empty = this hub repository"
+        required: false
+        type: string
+        default: ""
       note:
         description: "Answer / exception note (answer, waive)"
         required: false
@@ -45,12 +52,11 @@ on:
         default: off
 
 permissions:
-  contents: write
+  contents: read
   issues: write
-  pull-requests: read
 
 concurrency:
-  group: ai-decide-${{ inputs.issue }}
+  group: ai-decide-${{ inputs.repo }}-${{ inputs.issue }}
   cancel-in-progress: false
 
 jobs:
@@ -58,42 +64,72 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      REPO: ${{ github.repository }}
+      HUB: ${{ github.repository }}
       ISSUE: ${{ inputs.issue }}
       ACTION: ${{ inputs.action }}
+      REPO_INPUT: ${{ inputs.repo }}
       NOTE: ${{ inputs.note }}
       MODE: ${{ inputs.mode }}
       ACTOR: ${{ github.actor }}
+      PAT: ${{ secrets.EASYGH_PR_TOKEN }}
     steps:
-      - name: Authorize actor
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@v7
+
+      - name: Resolve target repository
+        id: target
         run: |
-          PERM=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq .permission 2>/dev/null || echo none)
-          case "$PERM" in
-            admin|maintain|write) echo "authorized (${PERM}) as ${ACTOR}" ;;
-            *) echo "::error::${ACTOR} has no write access (${PERM})"; exit 1 ;;
-          esac
+          set -euo pipefail
           case "$ISSUE" in
             ''|*[!0-9]*) echo "::error::issue must be a number"; exit 1 ;;
           esac
+          TARGET="${REPO_INPUT:-$HUB}"
+          case "$TARGET" in
+            */*) ;;
+            *) echo "::error::repo must be owner/name"; exit 1 ;;
+          esac
+          echo "repo=${TARGET}" >> "$GITHUB_OUTPUT"
+          echo "org=${TARGET%%/*}" >> "$GITHUB_OUTPUT"
+
+      - name: Authorize actor (hub permissions)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PERM=$(gh api "repos/${HUB}/collaborators/${ACTOR}/permission" --jq .permission 2>/dev/null || echo none)
+          case "$PERM" in
+            admin|maintain|write) echo "authorized (${PERM}) as ${ACTOR}" ;;
+            *) echo "::error::${ACTOR} has no write access to ${HUB} (${PERM})"; exit 1 ;;
+          esac
+
+      - name: Mint token for the target organization
+        env:
+          EASYGH_APP_ID: ${{ vars.EASYGH_APP_ID }}
+          EASYGH_APP_PRIVATE_KEY: ${{ secrets.EASYGH_APP_PRIVATE_KEY }}
+          ORG: ${{ steps.target.outputs.org }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EASYGH_APP_ID:-}" ] && [ -n "${EASYGH_APP_PRIVATE_KEY:-}" ]; then
+            node scripts/ghapp-token.mjs
+          else
+            echo "::warning::no App credentials; falling back to EASYGH_PR_TOKEN / GITHUB_TOKEN (hub only)"
+            echo "GH_TOKEN=${PAT:-}" >> "$GITHUB_ENV"
+          fi
 
       - name: Apply action
         env:
-          # Repo variables need admin; the pipeline PAT covers that when set.
-          GH_TOKEN: ${{ secrets.EASYGH_PR_TOKEN || github.token }}
+          TARGET: ${{ steps.target.outputs.repo }}
         run: |
           set -euo pipefail
-          lock="repos/${REPO}/git/refs/tags/ai-lock-issue-${ISSUE}"
+          lock="repos/${TARGET}/git/refs/tags/ai-lock-issue-${ISSUE}"
           audit() {
-            gh issue comment "$ISSUE" -R "$REPO" \
+            gh issue comment "$ISSUE" -R "$TARGET" \
               --body "<!-- easygh-decision actor=${ACTOR} action=${ACTION} -->"$'\n\n'"${1}"
           }
           rearm() {
             for label in ai-running ai-pr ai-failed ai-done ai-needs-input ai-deferred ai-stale; do
-              gh issue edit "$ISSUE" -R "$REPO" --remove-label "$label" >/dev/null 2>&1 || true
+              gh issue edit "$ISSUE" -R "$TARGET" --remove-label "$label" >/dev/null 2>&1 || true
             done
-            gh issue edit "$ISSUE" -R "$REPO" --add-label ai
+            gh issue edit "$ISSUE" -R "$TARGET" --add-label ai
           }
 
           case "$ACTION" in
@@ -102,13 +138,13 @@ jobs:
               audit "已按 ${ACTOR} 的请求重新排队（retry）。"
               ;;
             cancel)
-              gh issue edit "$ISSUE" -R "$REPO" --remove-label ai-running >/dev/null 2>&1 || true
+              gh issue edit "$ISSUE" -R "$TARGET" --remove-label ai-running >/dev/null 2>&1 || true
               gh api -X DELETE "$lock" >/dev/null 2>&1 || true
               audit "已按 ${ACTOR} 的请求取消当前运行（cancel）。锁已释放。"
               ;;
             answer)
               [ -n "$NOTE" ] || { echo "::error::note is required for answer"; exit 1; }
-              gh issue comment "$ISSUE" -R "$REPO" --body "$NOTE"
+              gh issue comment "$ISSUE" -R "$TARGET" --body "$NOTE"
               rearm
               audit "已把 ${ACTOR} 的回答交给流水线（answer → retry）。"
               ;;
@@ -117,8 +153,13 @@ jobs:
               audit "人工决定（waive，由 ${ACTOR} 记录，不会绕过策略）：${NOTE}"
               ;;
             set-automerge)
-              gh variable set AI_AUTOMERGE --body "$MODE"
-              audit "AI_AUTOMERGE 已设为 \`${MODE}\`（由 ${ACTOR}）。"
+              # Repo variables need admin; the App token cannot do this.
+              if [ -z "${PAT:-}" ]; then
+                echo "::error::set-automerge needs the EASYGH_PR_TOKEN secret (admin PAT)"
+                exit 1
+              fi
+              GH_TOKEN="$PAT" gh variable set AI_AUTOMERGE --repo "$HUB" --body "$MODE"
+              audit "AI_AUTOMERGE 已设为 \`${MODE}\`（由 ${ACTOR}，作用于 hub ${HUB}）。"
               ;;
             *)
               echo "::error::unknown action ${ACTION}"; exit 1 ;;

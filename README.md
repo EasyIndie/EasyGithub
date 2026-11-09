@@ -99,7 +99,9 @@ Every pull request (including AI pipeline PRs) runs `npm run check` via `.github
 branches/PRs in any installed repo. Targets contain **no workflow, no runner,
 no secret**. Mark an Issue for AI by adding the `ai` label or putting
 `easygh-ai` anywhere in its title/body (title/body markers are only honoured from OWNER/MEMBER/
-COLLABORATOR authors — the agent executes untrusted text, so outsiders cannot trigger it). Polling runs every 5 minutes (EasyGithub is public, so these runs are free/unmetered)
+COLLABORATOR authors — the agent executes untrusted text, so outsiders cannot trigger it). Polling runs every 5 minutes (EasyGithub is public, so these runs are free/unmetered).
+Multiple organizations: set `vars.EASYGH_ORGS` to a comma-separated list — each org gets its own
+`ghapp-scan` matrix job and installation token (see [docs/other-orgs.md](docs/other-orgs.md)).
 (`.github/workflows/ghapp-scan.yml` → `agent-runner/src/dispatcher.ts`);
 secrets live only in the hub.
 

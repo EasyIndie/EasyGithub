@@ -60,6 +60,17 @@ function ghJson<T>(args: string[]): T | null {
   }
 }
 
+/** Like ghJson, but keeps "request failed" distinguishable from "empty result". */
+function ghGet<T>(args: string[]): { ok: boolean; data: T | null } {
+  const out = gh(args);
+  if (out === null) return { ok: false, data: null };
+  try {
+    return { ok: true, data: JSON.parse(out) as T };
+  } catch {
+    return { ok: false, data: null };
+  }
+}
+
 /** An AI merge is recognised by the commit subject or the merged PR title. */
 export function isAiMerge(subject: string, prTitles: string[]): boolean {
   const first = subject.split("\n")[0]?.trim() ?? "";
@@ -254,8 +265,16 @@ export function watchRepo(repo: string, opts: { maxAgeDays?: number; dryRun?: bo
   const prTitles = (associated ?? []).filter((pr) => pr.merged_at !== null).map((pr) => pr.title ?? "");
   if (!isAiMerge(subject, prTitles)) return { repo, action: "none", detail: `head ${sha.slice(0, 7)} is not an AI merge` };
 
-  const runsRaw = ghJson<Parameters<typeof mapRuns>[0]>(["api", `repos/${repo}/actions/runs?branch=${defaultBranch}&per_page=30`]);
-  const failing = failingPushRuns(mapRuns(runsRaw ?? {}), sha);
+  const runsRes = ghGet<Parameters<typeof mapRuns>[0]>([
+    "api",
+    `repos/${repo}/actions/runs?branch=${defaultBranch}&per_page=30`,
+  ]);
+  if (!runsRes.ok) {
+    // A GitHub App without `Actions: read` gets a 403 here. Never report
+    // "healthy" when the health signal is simply unreadable.
+    return { repo, action: "skipped", detail: "cannot read workflow runs (app needs Actions: read)" };
+  }
+  const failing = failingPushRuns(mapRuns(runsRes.data ?? {}), sha);
   if (failing.length === 0) {
     const reverts = detectReverts(repo);
     return {
