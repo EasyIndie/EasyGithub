@@ -158,6 +158,27 @@ gh run view <run-id> -R <hub>/<repo> --log | grep -E "\[dispatch\] (org=|accessi
    改完权限后，**每个组织需要在安装页重新批准**（GitHub 会提示）。
 3. **在每个目标组织安装 App**：`https://github.com/apps/easygithub-ai/installations/new`
    → 选组织 → All repositories（或选定）。安装需要该组织 **admin**。
+
+   > **GitHub 没有"在 App 里添加组织"的设置项。** 能装到哪里由 General 页的
+   > "Where can this GitHub App be installed?" 单选决定（`Any account` / `Only on this account`），
+   > 安装入口在 App 页面（Install App 标签）或 `https://github.com/apps/<slug>/installations/new`。
+   >
+   > 如果安装页只显示 EasyIndie、看不到目标组织，说明 App 是**私有**（`Only on this account`）：
+   > 未登录访问 `https://api.github.com/apps/<slug>` 会返回 404（公开 App 返回 200）。
+   >
+   > **解法 A（推荐，1 分钟）**：App settings → General → "Where can this GitHub App be installed?"
+   > 改成 **Any account** → Save，然后重新打开安装页。
+   >
+   > **解法 B（保持私有，每组织独立 App）**：让每个组织拥有自己的 App（owner = 该组织），
+   > 装到它自己；然后给 hub 配按组织命名的凭证（大写、非字母数字换成 `_`）：
+   > ```bash
+   > gh variable set EASYGH_APP_ID_ORZMC        -R EasyIndie/EasyGithub --body "<orz-app-id>"
+   > gh secret   set EASYGH_APP_PRIVATE_KEY_ORZMC -R EasyIndie/EasyGithub < orz.private-key.pem
+   > gh variable set EASYGH_APP_ID_ORZGEEKER        -R EasyIndie/EasyGithub --body "<geeker-app-id>"
+   > gh secret   set EASYGH_APP_PRIVATE_KEY_ORZGEEKER -R EasyIndie/EasyGithub < geeker.private-key.pem
+   > ```
+   > `ghapp-scan` / `ai-decide` 会优先用 `EASYGH_APP_ID_<ORG>` / `EASYGH_APP_PRIVATE_KEY_<ORG>`，
+   > 找不到才回落到共享 App。每个组织的 App 也需要同样的仓库权限（含 `Actions: Read-only`）。
 4. **hub 变量**：
    ```bash
    gh variable set EASYGH_ORGS -R EasyIndie/EasyGithub --body "EasyIndie,OrzMC,OrzGeeker"
