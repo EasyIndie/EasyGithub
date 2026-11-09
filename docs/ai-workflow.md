@@ -69,8 +69,11 @@ auto_merge := AI_AUTOMERGE in {"probation","on"}          # 默认 off
 
 - `high` → **草稿 PR**（GitHub 上草稿不可合并）+ CODEOWNERS 审查；AI 无法自行解除草稿。
 - `medium` → 普通 PR，等人工 review。
-- `low` + `AI_AUTOMERGE=on` → `gh pr merge --auto --squash`；**仍需通过必需检查**，并且受分支保护约束。
-- 若想让 low 风险**零点击**合并：给仓库加一条 ruleset，把 bot 放进 bypass 列表（放宽 required review）。默认不做——保守优先。
+- `low` + `AI_AUTOMERGE=on` → `gh pr merge --auto --squash`，必需检查通过即合并（**零点击**）。
+- 本仓库的零点击前提（单人维护者）：`required_approving_review_count=0` + ruleset `ai-checks` 强制
+  `check`/`workflows`；high 风险仍是**草稿 PR**，草稿在 GitHub 上不可合并，所以自动化边界没有放宽。
+- `enforce_admins=false`：admin 可绕过保护做应急操作（回滚/热修），但仍留审计痕迹。
+- 想恢复"人工点击合并"：`ai-decide → set-automerge → off`（立即生效，无需改代码）。
 - 保护路径 = 新加一条 `high` 规则时同步改 `CODEOWNERS`，两边一起 review。
 
 ## 4. 人工触点（最小集）
@@ -130,9 +133,18 @@ auto_merge := AI_AUTOMERGE in {"probation","on"}          # 默认 off
 ```bash
 gh api -X PUT repos/EasyIndie/EasyGithub/branches/main/protection/required_status_checks \
   -f strict=true -f 'contexts[]=check' -f 'contexts[]=workflows'
+# 单人维护者：不要求人工批准（否则自己的 PR 无法自我批准），
+# 低风险交付由 ruleset 的必需检查 + 草稿/非草稿分级来保证。
 gh api -X PATCH repos/EasyIndie/EasyGithub/branches/main/protection/required_pull_request_reviews \
-  -F dismiss_stale_reviews=true -F require_code_owner_reviews=true -F require_last_push_approval=true
+  -F dismiss_stale_reviews=true -F required_approving_review_count=0
+gh api -X DELETE repos/EasyIndie/EasyGithub/branches/main/protection/enforce_admins   # admin 可应急绕过
 gh api -X PATCH repos/EasyIndie/EasyGithub -F allow_auto_merge=true
+gh variable set AI_AUTOMERGE --body on        # 低风险零点击合并
+```
+有第二位维护者后，再恢复人工审查：
+```bash
+gh api -X PATCH repos/EasyIndie/EasyGithub/branches/main/protection/required_pull_request_reviews \
+  -F required_approving_review_count=1 -F require_code_owner_reviews=true -F require_last_push_approval=true
 ```
 
 ## 8. 永久由人掌握的部分
@@ -174,7 +186,7 @@ gh api -X PATCH repos/EasyIndie/EasyGithub -F allow_auto_merge=true
 | 回答 AI 的问题 | 直接评论（成员/协作者），然后 `ai-decide` → `answer`（附上回答内容） |
 | 取消卡住的运行 | `ai-decide` → `cancel`（会删 `ai-running` 与锁） |
 | 记录一次人工例外 | `ai-decide` → `waive`（只留审计，不绕过策略） |
-| 开启/收紧自动合并 | `ai-decide` → `set-automerge`（`off` / `probation` / `on`） |
+| 开启/收紧自动合并 | `ai-decide` → `set-automerge`（`off` / `probation` / `on`；当前为 `on`） |
 | 让高风险改动进主干 | 审查草稿 PR → 点 "Ready for review" → 批准合并（code owner 必须） |
 | 回滚出事的 AI 合并 | 等 `ai-incident` Issue 里的 revert PR，批准合并即可 |
 | 看一周发生了什么 | 每周一自动生成的 `retro` Issue |
