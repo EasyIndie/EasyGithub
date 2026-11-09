@@ -24,6 +24,8 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.EASYGH_PR_TOKEN || github.token }}
       GITHUB_REPOSITORY: ${{ github.repository }}
+      # Comma-separated list: hub + zero-file targets (empty -> hub only).
+      EASYGH_RETRO_REPOS: ${{ vars.EASYGH_RETRO_REPOS }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

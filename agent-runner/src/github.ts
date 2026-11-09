@@ -221,6 +221,26 @@ export function countRecentAiPrs(repo: string, hours: number): number {
   }).length;
 }
 
+/** True while an unresolved AI incident latches the repo (auto-merge breaker). */
+export function hasOpenIncident(repo: string): boolean {
+  const res = runSync("gh", [
+    "issue",
+    "list",
+    "-R",
+    repo,
+    "--label",
+    "ai-incident",
+    "--state",
+    "open",
+    "--limit",
+    "1",
+    "--json",
+    "number",
+  ]);
+  if (res.status !== 0) return false;
+  return res.stdout.trim() !== "[]";
+}
+
 // --- claim lock -----------------------------------------------------------
 //
 // Labels are not a compare-and-swap primitive: two triggers (the `labeled`

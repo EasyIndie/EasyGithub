@@ -32,6 +32,13 @@
 - `.github/CODEOWNERS`：`.github/**`、`agent-runner/**`、`scripts/**`、`eval/**`、`LICENSE` 必须 code owner 审查。
 - 新标签：`ai-needs-input`、`ai-deferred`、`ai-automerge`、`ai-incident`、`retro`。
 
+### Added (cross-repo automation)
+
+- 跨仓库看护 `agent-runner/src/watch.ts`：dispatcher 每 5 分钟巡检 App 安装范围内的仓库——若默认分支 head 是 AI 合并且该提交上的 `push` 运行失败，自动开 `ai-incident` + 准备 revert PR。定时/安全扫描（`schedule`）不会误报。
+- 熔断闭锁：`ai-incident` 打开期间该仓库不再自动合并（关闭 Issue 即恢复），`hasOpenIncident()` 在 arm auto-merge 前检查。
+- 周报覆盖多仓库：`retro.ts --repos a/b,c/d` / `EASYGH_RETRO_REPOS`，按仓库分区统计。
+- 开关：`EASYGH_WATCHDOG`（默认 on）。
+
 ### Changed
 
 - 检查命令在 agent 运行前冻结；若检查配置被改动，执行冻结版本并标记 `ai-verify-changed`，不再把"跳过验证"当作"验证通过"。

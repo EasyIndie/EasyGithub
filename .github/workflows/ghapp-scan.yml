@@ -53,6 +53,8 @@ jobs:
           # Wall-clock budget per scan (job timeout is 60 min) and per issue
           # (agent session + retries). Keeps a slow target from eating the queue.
           DISPATCH_BUDGET_MS: ${{ vars.EASYGH_DISPATCH_BUDGET_MS || '3000000' }}
+          # Cross-repo post-merge watchdog (targets cannot host ai-watch themselves).
+          EASYGH_WATCHDOG: ${{ vars.EASYGH_WATCHDOG || 'on' }}
           AGENT_BUDGET_MS: ${{ vars.EASYGH_AGENT_BUDGET_MS || '2400000' }}
           PI_TIMEOUT_MS: "900000"
           AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
