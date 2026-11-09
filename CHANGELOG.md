@@ -38,6 +38,7 @@
 - 熔断闭锁：`ai-incident` 打开期间该仓库不再自动合并（关闭 Issue 即恢复），`hasOpenIncident()` 在 arm auto-merge 前检查。
 - 周报覆盖多仓库：`retro.ts --repos a/b,c/d` / `EASYGH_RETRO_REPOS`，按仓库分区统计。
 - 开关：`EASYGH_WATCHDOG`（默认 on）。
+- hub 的 `ai-watch` 改为调用同一个 `watch.ts`（新增 CLI 与 `--dry-run`），与目标仓库共用一套判定逻辑。
 
 ### Changed
 

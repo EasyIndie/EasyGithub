@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { runSync } from "./util/exec.ts";
 
 /**
@@ -228,7 +229,7 @@ function detectReverts(repo: string): string[] {
     .map((pr) => `#${pr.number} ${pr.title}`);
 }
 
-export function watchRepo(repo: string, opts: { maxAgeDays?: number } = {}): WatchResult {
+export function watchRepo(repo: string, opts: { maxAgeDays?: number; dryRun?: boolean } = {}): WatchResult {
   if (!hasPipelineHistory(repo)) return { repo, action: "skipped", detail: "no ai-pr label (pipeline never used here)" };
 
   const info = ghJson<{ default_branch?: string }>(["api", `repos/${repo}`]);
@@ -265,6 +266,9 @@ export function watchRepo(repo: string, opts: { maxAgeDays?: number } = {}): Wat
   }
 
   if (openIncidentFor(repo, sha)) return { repo, action: "skipped", detail: `incident already open for ${sha.slice(0, 7)}` };
+  if (opts.dryRun) {
+    return { repo, action: "none", detail: `dry-run: would open incident for ${sha.slice(0, 7)} (${failing.map((r) => r.name).join(", ")})` };
+  }
 
   const created = openIncident(repo, sha, subject, failing, defaultBranch);
   return { repo, action: "incident", detail: created };
@@ -284,3 +288,34 @@ export function runWatchdog(opts: { filter?: string[]; maxRepos?: number; maxAge
   }
   return results;
 }
+
+/**
+ * CLI used by the hub's own ai-watch workflow:
+ *   node agent-runner/src/watch.ts --repo owner/name [--max-age-days 7] [--dry-run]
+ *
+ * Logs go to stderr; the last stdout line is a single JSON object so a shell
+ * step can read `action` without parsing prose.
+ */
+function cli(): void {
+  const args = process.argv.slice(2);
+  const flag = (name: string, fallback: string): string => {
+    const index = args.indexOf(`--${name}`);
+    return index >= 0 && args[index + 1] ? (args[index + 1] as string) : fallback;
+  };
+  const repo = flag("repo", process.env.GITHUB_REPOSITORY ?? "");
+  if (!repo) {
+    console.error("[watch] --repo owner/name is required");
+    process.exitCode = 1;
+    return;
+  }
+  const maxAgeDays = Number(flag("max-age-days", "7"));
+  const result = watchRepo(repo, {
+    maxAgeDays: Number.isFinite(maxAgeDays) && maxAgeDays > 0 ? maxAgeDays : 7,
+    dryRun: args.includes("--dry-run"),
+  });
+  console.error(`[watch] ${result.repo}: ${result.action} — ${result.detail}`);
+  console.log(JSON.stringify(result));
+}
+
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) cli();
