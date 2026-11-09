@@ -76,6 +76,8 @@ const LABEL_COLORS: Record<string, string> = {
   "agent:pi": "1F6FEB",
   "agent:claude": "5319E7",
   "agent:codex": "BFD4F2",
+  "ai-core": "5319E7",
+  "ai-verify-changed": "FBCA04",
 };
 
 /** Create a label if it does not exist (used for zero-config repositories). */
@@ -126,3 +128,99 @@ export function createPr(repo: string, opts: { base: string; head: string; title
   if (found?.number) return found;
   throw new Error(`Failed to create PR for ${opts.head}: ${res.stderr.trim()}`);
 }
+
+// --- claim lock -----------------------------------------------------------
+//
+// Labels are not a compare-and-swap primitive: two triggers (the `labeled`
+// workflow and the App dispatcher) can both observe `ai` and start a run,
+// double-spending tokens, and a crashed run leaves `ai-running` stuck forever.
+//
+// We use a tag ref as an atomic server-side lock: creating `refs/tags/ai-lock-
+// issue-N` succeeds exactly once (409/422 otherwise). The tag object carries a
+// timestamp so a dead run's lock can be reclaimed after a TTL. Repositories
+// where ref creation is blocked fall back to label-only behaviour.
+
+const LOCK_TAG = (issue: number) => `ai-lock-issue-${issue}`;
+
+export type LockState = "acquired" | "busy" | "unavailable";
+
+function ghJson<T>(args: string[], input?: string): T | null {
+  const res = runSync("gh", args, { input });
+  if (res.status !== 0) return null;
+  try {
+    return JSON.parse(res.stdout) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Age of a lock tag object in ms, or null when it cannot be determined. */
+function lockAgeMs(repo: string, tagSha: string): number | null {
+  const obj = ghJson<{ tagger?: { date?: string } }>(["api", `repos/${repo}/git/tags/${tagSha}`]);
+  const date = obj?.tagger?.date;
+  if (!date) return null;
+  const ts = Date.parse(date);
+  return Number.isFinite(ts) ? Math.max(0, Date.now() - ts) : null;
+}
+
+/**
+ * Try to claim exclusive ownership of an issue run.
+ *
+ * `busy`      -> another live run owns it; skip.
+ * `acquired`  -> this process owns it; release with releaseLock().
+ * `unavailable` -> lock API not usable (permissions/ruleset); caller falls back
+ *                  to the legacy label check. Never blocks the pipeline.
+ */
+export function acquireLock(
+  repo: string,
+  issue: number,
+  opts: { defaultBranch: string; ttlMs: number },
+): LockState {
+  const tag = LOCK_TAG(issue);
+  const existing = ghJson<{ object?: { sha?: string } }>(["api", `repos/${repo}/git/ref/tags/${tag}`]);
+  const existingSha = existing?.object?.sha;
+  if (existingSha) {
+    const age = lockAgeMs(repo, existingSha);
+    if (age === null || age < opts.ttlMs) return "busy";
+    // Stale (crashed run): reclaim below.
+    runSync("gh", ["api", "-X", "DELETE", `repos/${repo}/git/refs/tags/${tag}`]);
+  }
+
+  const head = ghJson<{ object?: { sha?: string } }>([
+    "api",
+    `repos/${repo}/git/ref/heads/${opts.defaultBranch}`,
+  ]);
+  const headSha = head?.object?.sha;
+  if (!headSha) return "unavailable";
+
+  const tagObject = ghJson<{ sha?: string }>(
+    ["api", `repos/${repo}/git/tags`, "-X", "POST", "--input", "-"],
+    JSON.stringify({
+      tag,
+      message: "EasyGithub pipeline lock (removed automatically)",
+      object: headSha,
+      type: "commit",
+      tagger: {
+        name: "EasyGithub Agent",
+        email: "41898282+github-actions[bot]@users.noreply.github.com",
+        date: new Date().toISOString(),
+      },
+    }),
+  );
+  if (!tagObject?.sha) return "unavailable";
+
+  const created = runSync(
+    "gh",
+    ["api", `repos/${repo}/git/refs`, "-X", "POST", "--input", "-"],
+    { input: JSON.stringify({ ref: `refs/tags/${tag}`, sha: tagObject.sha }) },
+  );
+  if (created.status === 0) return "acquired";
+  if (/already exists|already_exists|422/i.test(`${created.stderr}${created.stdout}`)) return "busy";
+  return "unavailable";
+}
+
+/** Release a lock acquired by acquireLock (safe to call unconditionally). */
+export function releaseLock(repo: string, issue: number): void {
+  runSync("gh", ["api", "-X", "DELETE", `repos/${repo}/git/refs/tags/${LOCK_TAG(issue)}`]);
+}
+

@@ -1,12 +1,25 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { selectAgent } from "./agents/registry.ts";
+import type { AgentResult } from "./agents/types.ts";
+import { ensureAgentCli } from "./cli.ts";
+import { agentEnv, withheldSecretNames } from "./env.ts";
 import * as git from "./git.ts";
-import { addLabel, commentFromFile, createPr, getIssue, listLabels, removeLabel, type PrInfo } from "./github.ts";
+import {
+  acquireLock,
+  addLabel,
+  commentFromFile,
+  createPr,
+  getIssue,
+  listLabels,
+  releaseLock,
+  removeLabel,
+  type PrInfo,
+} from "./github.ts";
+import { auditStagedChanges, describeAudit, stageChanges } from "./policy.ts";
 import { classifyTask, renderTaskMarkdown } from "./prompt.ts";
 import { routeAgent } from "./router.ts";
-import { runVerify } from "./verify.ts";
-import { ensureAgentCli } from "./cli.ts";
+import { captureVerifySpec, runVerify, type VerifyResult } from "./verify.ts";
 
 const L = {
   trigger: "ai",
@@ -14,7 +27,14 @@ const L = {
   pr: "ai-pr",
   failed: "ai-failed",
   done: "ai-done",
+  /** the diff touches the runner / CI / installers -> human review required */
+  core: "ai-core",
+  /** the repository's check configuration changed while the agent was running */
+  verifyChanged: "ai-verify-changed",
 };
+
+/** Labels that mean "this issue has already been handled"; used as a fast skip. */
+const HANDLED = [L.running, L.pr, L.failed, L.done];
 
 const log = (...args: unknown[]) => console.log("[runner]", ...args);
 
@@ -38,7 +58,16 @@ function redact(text: string): string {
     [/githu[b]_[A-Za-z0-9]{20,}/gi, "github[redacted]"],
   ];
   for (const [re, rep] of patterns) out = out.replace(re, rep);
-  for (const name of ["DEEPSEEK_API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]) {
+  for (const name of [
+    "DEEPSEEK_API_KEY",
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "EASYGH_PR_TOKEN",
+    "EASYGH_APP_PRIVATE_KEY",
+  ]) {
     const val = process.env[name];
     if (val && val.length > 4) out = out.split(val).join(`[${name} redacted]`);
   }
@@ -78,41 +107,82 @@ function retryContext(verifyOutput: string, failedAttempt: number): string {
   ].join("\n");
 }
 
+function verificationLine(result: VerifyResult | null, kind: string): string {
+  if (kind === "review") return "🧐 Review 任务：不做代码改动，也不要求通过仓库检查";
+  if (!result) return "⚠️ 未执行独立检查（时间预算耗尽）";
+  if (result.skipped) return "⚠️ 仓库中没有可运行的检查命令，本次改动**未经独立验证**";
+  if (result.tampered) return `⚠️ 检查配置在运行期间被修改，已用冻结版本复验：\`${result.command}\``;
+  return `✅ 已通过独立检查：\`${result.command}\``;
+}
+
 async function main(): Promise<void> {
   const repo = requireEnv("GITHUB_REPOSITORY");
   const issueNumber = Number(requireEnv("ISSUE_NUMBER"));
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) throw new Error(`Bad ISSUE_NUMBER: ${process.env.ISSUE_NUMBER}`);
 
   const thinking = process.env.THINKING?.trim() || "high";
-  const timeoutMs = Number(process.env.PI_TIMEOUT_MS ?? 25 * 60 * 1000);
-  const maxAttempts = intEnv("AI_MAX_ATTEMPTS", 3, 1, 5);
   const defaultBranch = process.env.DEFAULT_BRANCH ?? "main";
   const workDir = process.env.WORK_DIR ?? process.cwd();
   const runDir = join(process.env.RUNNER_TEMP ?? ".tmp/runner", `ai-issue-${issueNumber}`);
   mkdirSync(runDir, { recursive: true });
 
+  // Time budget: the job timeout must cover attempts * (agent + verify) plus
+  // install/push overhead. Every step below is clamped by the remaining budget
+  // so a slow run reports "budget exhausted" instead of being killed mid-flight.
+  const piTimeoutMs = intEnv("PI_TIMEOUT_MS", 15 * 60 * 1000, 60_000, 60 * 60 * 1000);
+  const verifyTimeoutMs = intEnv("VERIFY_TIMEOUT_MS", 10 * 60 * 1000, 10_000, 60 * 60 * 1000);
+  const budgetMs = intEnv("AGENT_BUDGET_MS", 75 * 60 * 1000, 60_000, 6 * 60 * 60 * 1000);
+  const lockTtlMs = intEnv("LOCK_TTL_MS", 3 * 60 * 60 * 1000, 10 * 60 * 1000, 24 * 60 * 60 * 1000);
+  const maxAttempts = intEnv("AI_MAX_ATTEMPTS", 3, 1, 5);
+  const startedAt = Date.now();
+  const remainingMs = () => budgetMs - (Date.now() - startedAt);
+
   const branch = `ai/issue-${issueNumber}`;
   log(`repo=${repo} issue=#${issueNumber} branch=${branch}`);
-
-  // --- claim ---------------------------------------------------------------
-  const labels = listLabels(repo, issueNumber);
-  const handled = [L.running, L.pr, L.failed, L.done].some((x) => labels.includes(x));
-  if (handled) {
-    log(`skip: issue already handled/in-flight (labels: ${labels.join(",")})`);
-    return;
+  log(
+    `budget=${Math.round(budgetMs / 60000)}m agent≤${Math.round(piTimeoutMs / 60000)}m verify≤${Math.round(verifyTimeoutMs / 60000)}m attempts=${maxAttempts}`,
+  );
+  if (maxAttempts * (piTimeoutMs + verifyTimeoutMs) > budgetMs) {
+    log("warning: AI_MAX_ATTEMPTS * (PI_TIMEOUT_MS + VERIFY_TIMEOUT_MS) exceeds AGENT_BUDGET_MS; later attempts may be skipped");
   }
-  addLabel(repo, issueNumber, L.running);
-  removeLabel(repo, issueNumber, L.trigger);
-  log("claimed (ai-running set, ai removed)");
 
-  const finish = (outcome: "pr" | "done" | "failed") => {
+  let claimed = false;
+  let locked = false;
+  let outcome: "pr" | "done" | "failed" | null = null;
+
+  const finish = (result: "pr" | "done" | "failed") => {
     removeLabel(repo, issueNumber, L.running);
-    if (outcome === "pr") addLabel(repo, issueNumber, L.pr);
-    else if (outcome === "failed") addLabel(repo, issueNumber, L.failed);
+    if (result === "pr") addLabel(repo, issueNumber, L.pr);
+    else if (result === "failed") addLabel(repo, issueNumber, L.failed);
     else addLabel(repo, issueNumber, L.done);
   };
 
+  const postComment = (body: string, name = "comment.md") =>
+    commentFromFile(repo, issueNumber, writeText(join(runDir, name), body));
+
   try {
+    // --- claim: labels (fast) + atomic lock (authoritative) -------------------
+    const labels = listLabels(repo, issueNumber);
+    if (HANDLED.some((x) => labels.includes(x))) {
+      log(`skip: issue already handled/in-flight (labels: ${labels.join(",")})`);
+      return;
+    }
+
+    const lockState = acquireLock(repo, issueNumber, { defaultBranch, ttlMs: lockTtlMs });
+    if (lockState === "busy") {
+      log("skip: another run holds the claim lock");
+      return;
+    }
+    locked = lockState === "acquired";
+    if (lockState === "unavailable") {
+      log("warning: claim lock API unavailable (permissions/ruleset); falling back to labels only");
+    }
+
+    addLabel(repo, issueNumber, L.running);
+    removeLabel(repo, issueNumber, L.trigger);
+    claimed = true;
+    log(locked ? "claimed (lock + ai-running set, ai removed)" : "claimed (labels only, ai removed)");
+
     // --- context -------------------------------------------------------------
     const issue = getIssue(repo, issueNumber);
     const kind = classifyTask(issue);
@@ -127,11 +197,15 @@ async function main(): Promise<void> {
     const model = isPi ? (process.env.MODEL?.trim() || "deepseek-v4-flash") : (process.env[`AI_${agentName.toUpperCase()}_MODEL`]?.trim() ?? "default");
     const extraArgs = isPi && thinking ? ["--thinking", thinking] : [];
     log(`agent=${agent.name} provider=${provider} model=${model} (override=${explicitAgent ?? "no"})`);
-    log(`runDir=${runDir} defaultBranch=${defaultBranch} maxAttempts=${maxAttempts} verifyCmd=${process.env.VERIFY_CMD ?? "(auto)"}`);
 
     const cliIssue = await ensureAgentCli(agentName);
     if (cliIssue) log(`warning: agent CLI provisioning: ${cliIssue}`);
     else log(`agent CLI ready (${agentName})`);
+
+    // The agent never sees repository write credentials (GH_TOKEN & friends).
+    const childEnv = agentEnv();
+    const withheld = withheldSecretNames();
+    log(`agent env: ${Object.keys(childEnv).length} vars forwarded, ${withheld.length} secret-looking withheld (${withheld.join(",") || "none"})`);
 
     const meta = {
       repo,
@@ -152,12 +226,30 @@ async function main(): Promise<void> {
     git.setIdentity(workDir, "EasyGithub Agent", "41898282+github-actions[bot]@users.noreply.github.com");
     log(`branch ${branch} ready`);
 
+    // --- freeze the referee before the agent can touch the repo --------------
+    const verifySpec = await captureVerifySpec(workDir);
+    log(`gate frozen: cmd="${verifySpec.command ?? "(none)"}" (${verifySpec.scriptBody ? "script body captured" : "no script body"})`);
+
+    // --- remove push credentials for the agent phase --------------------------
+    git.hideCredentials(workDir);
+    log("git push credentials hidden from the agent");
+
     // --- agent attempts with independent verification -------------------------
-    let agentResult: Awaited<ReturnType<typeof agent.run>> | null = null;
+    let agentResult: AgentResult | null = null;
+    let verifyResult: VerifyResult | null = null;
     let lastVerify = "";
+    let verifiedPass = kind === "review";
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      log(`--- attempt ${attempt}/${maxAttempts} ---`);
+      const remaining = remainingMs();
+      if (remaining <= 90_000) {
+        log(`budget exhausted before attempt ${attempt} (${Math.round(remaining / 1000)}s left)`);
+        break;
+      }
+      const attemptTimeout = Math.min(piTimeoutMs, Math.max(60_000, remaining - verifyTimeoutMs - 30_000));
+      log(
+        `--- attempt ${attempt}/${maxAttempts} (agent ≤${Math.round(attemptTimeout / 60000)}m, budget left ${Math.round(remaining / 60000)}m) ---`,
+      );
 
       const bodyWithContext = attempt === 1 ? issue.body : issue.body + retryContext(lastVerify, attempt - 1);
       const taskMd = await renderTaskMarkdown(kind, meta, bodyWithContext);
@@ -173,8 +265,8 @@ async function main(): Promise<void> {
         model,
         extraArgs,
         logFile,
-        timeoutMs,
-        env: process.env,
+        timeoutMs: attemptTimeout,
+        env: childEnv,
       });
       agentResult = result;
       log(`attempt ${attempt}: agent ok=${result.ok} error=${result.error ?? "(none)"}`);
@@ -184,20 +276,29 @@ async function main(): Promise<void> {
         // retry fixes — report and stop.
         const detail = redact(`${result.error ?? "agent failed"}\n\n--- last log lines ---\n${logTail(logFile)}`);
         const body = `❌ **AI 处理失败（${agent.name} / ${model}，attempt ${attempt}/${maxAttempts}）**\n\n\`\`\`\n${detail.slice(0, 6000)}\n\`\`\`\n\n如需重试：移除 \`${L.failed}\` 标签后重新添加 \`${L.trigger}\` 标签。`;
-        commentFromFile(repo, issueNumber, writeText(join(runDir, "comment.md"), body));
-        finish("failed");
+        postComment(body);
+        outcome = "failed";
         process.exitCode = 1;
         return;
       }
 
+      if (kind === "review") break;
+
       // Independent referee — do not trust the agent's self-reported checks.
-      const verify = await runVerify(workDir);
+      const verify = await runVerify(
+        workDir,
+        verifySpec,
+        Math.min(verifyTimeoutMs, Math.max(30_000, remainingMs() - 30_000)),
+      );
+      verifyResult = verify;
       lastVerify = verify.output;
-      const verifyLog = writeText(join(runDir, `verify-${attempt}.log`), verify.output);
-      log(`attempt ${attempt}: verify ok=${verify.ok} skipped=${verify.skipped} cmd="${verify.command || "(none)"}"`);
+      writeText(join(runDir, `verify-${attempt}.log`), verify.output);
+      log(
+        `attempt ${attempt}: verify ok=${verify.ok} skipped=${verify.skipped} tampered=${verify.tampered} cmd="${verify.command || "(none)"}"`,
+      );
 
       if (verify.ok) {
-        void verifyLog;
+        verifiedPass = true;
         break; // checks pass -> package & deliver
       }
 
@@ -205,34 +306,89 @@ async function main(): Promise<void> {
         log(`attempt ${attempt}: verification FAILED — feeding failure back to agent for retry`);
         continue;
       }
+    }
 
-      // All attempts exhausted.
-      const detail = redact(`Verification still failing after ${maxAttempts} attempts.\n\nCommand: ${verify.command}\n\n--- last verify output ---\n${verify.output.slice(-6000)}`);
-      const body = `❌ **AI 处理后仍未通过仓库检查**（${agent.name} / ${model}，${maxAttempts} 次尝试后放弃）\n\n\`\`\`\n${detail.slice(0, 6000)}\n\`\`\`\n\n如需重试：移除 \`${L.failed}\` 标签后重新添加 \`${L.trigger}\` 标签。`;
-      commentFromFile(repo, issueNumber, writeText(join(runDir, "comment.md"), body));
-      finish("failed");
+    if (!agentResult) {
+      log("no agent attempt could be started");
+      postComment(
+        `⏱️ **AI 流水线未能在时间预算内启动**（预算 ${Math.round(budgetMs / 60000)} 分钟，agent 上限 ${Math.round(piTimeoutMs / 60000)} 分钟/次）。\n\n` +
+          `请调大 \`AGENT_BUDGET_MS\` / \`PI_TIMEOUT_MS\`，或缩小 Issue 范围。移除 \`${L.failed}\` 标签后重新添加 \`${L.trigger}\` 可重试。`,
+      );
+      outcome = "failed";
       process.exitCode = 1;
       return;
     }
 
-    // --- verify passed: package & deliver --------------------------------------
-    if (!agentResult) throw new Error("internal: agentResult undefined after loop");
-
-    if (!git.hasChanges(workDir)) {
-      log("no code changes produced");
-      const summary = redact(agentResult.summary || "(no summary)");
-      const body = `🤖 **AI 处理完成并通过检查，但没有产生任何代码变更**（${agent.name} / ${model}）。\n\n${summary.slice(0, 3000)}`;
-      commentFromFile(repo, issueNumber, writeText(join(runDir, "comment.md"), body));
-      finish("done");
+    if (!verifiedPass) {
+      const reason = verifyResult
+        ? verifyResult.timedOut
+          ? "检查超时"
+          : "仓库检查未通过"
+        : "时间预算耗尽";
+      const detail = redact(
+        verifyResult
+          ? `Verification still failing after ${maxAttempts} attempts.\n\nCommand: ${verifyResult.command}\n\n--- last verify output ---\n${verifyResult.output.slice(-6000)}`
+          : `The run exhausted its ${Math.round(budgetMs / 60000)} minute budget before verification could pass.`,
+      );
+      postComment(
+        `❌ **AI 处理后仍未通过仓库检查**（${agent.name} / ${model}，${reason}）\n\n\`\`\`\n${detail.slice(0, 6000)}\n\`\`\`\n\n如需重试：移除 \`${L.failed}\` 标签后重新添加 \`${L.trigger}\` 标签。`,
+      );
+      outcome = "failed";
+      process.exitCode = 1;
       return;
     }
 
+    // --- review tasks are read-only: publish the report, never commit ----------
+    if (kind === "review") {
+      const summary = redact(agentResult.summary || "(review produced no output)");
+      postComment(`## 🧐 AI Review（${agent.name} / ${model}）\n\n${summary.slice(0, 6000)}`);
+      log("review report posted (no code change expected)");
+      outcome = "done";
+      return;
+    }
+
+    // --- verify passed: package & deliver --------------------------------------
+    const staged = stageChanges(workDir);
+    if (staged.ignored.length > 0) log(`not committing ${staged.ignored.length} generated path(s): ${staged.ignored.slice(0, 5).join(",")}`);
+
+    if (!git.hasStagedChanges(workDir)) {
+      log("no code changes produced");
+      const summary = redact(agentResult.summary || "(no summary)");
+      postComment(
+        `🤖 **AI 处理完成，但未产生可提交的代码变更**（${agent.name} / ${model}）。\n\n${verificationLine(verifyResult, kind)}\n\n${summary.slice(0, 3000)}`,
+      );
+      outcome = "done";
+      return;
+    }
+
+    // Policy gate: path allow-list + secret scan on the staged diff.
+    const audit = auditStagedChanges(workDir);
+    if (!audit.ok) {
+      log(`policy violation: blocked=${audit.blocked.length} secrets=${audit.secrets.length}`);
+      postComment(
+        `❌ **AI 改动被流水线策略拒绝**（${agent.name} / ${model}）\n\n${redact(describeAudit(audit))}\n\n` +
+          `分支 \`${branch}\` 未推送，未创建 PR。如需修改这些路径，请人工提交。`,
+      );
+      outcome = "failed";
+      process.exitCode = 1;
+      return;
+    }
+    if (audit.sensitive.length > 0) {
+      addLabel(repo, issueNumber, L.core);
+      log(`flagged ai-core (${audit.sensitive.length} sensitive path(s)): ${audit.sensitive.slice(0, 6).join(",")}`);
+    }
+    if (verifyResult?.tampered) {
+      addLabel(repo, issueNumber, L.verifyChanged);
+      log("flagged ai-verify-changed: the check configuration changed during the run");
+    }
+
     const shortTitle = issue.title.slice(0, 60);
-    const kindPrefix = kind === "feature" ? "feat" : kind === "review" ? "review" : "fix";
+    const kindPrefix = kind === "feature" ? "feat" : "fix";
     const commitMessage = `${kindPrefix}: #${issueNumber} ${shortTitle}`;
-    git.commitAll(workDir, commitMessage);
+    git.commitStaged(workDir, commitMessage);
     log(`committed: ${commitMessage}`);
 
+    git.restoreCredentials(workDir);
     git.pushBranch(workDir, branch);
     log("pushed");
 
@@ -245,38 +401,72 @@ async function main(): Promise<void> {
       `Fixes #${issueNumber}`,
       ``,
       `---`,
-      `_Auto-generated by EasyGithub AI pipeline (${agent.name} / ${provider} / ${model}). Checks verified independently by the runner before this PR was opened. Review before merging._`,
-    ].join("\n");
+      verificationLine(verifyResult, kind),
+      ``,
+      audit.sensitive.length > 0
+        ? `⚠️ 本次改动涉及流水线/CI/安装器（\`ai-core\`），需要人工审查后合并。`
+        : ``,
+      ``,
+      `_Auto-generated by EasyGithub AI pipeline (${agent.name} / ${provider} / ${model}). Review before merging._`,
+    ]
+      .filter((line, i, all) => !(line === `` && all[i + 1] === ``))
+      .join("\n");
     const prBodyFile = writeText(join(runDir, "pr-body.md"), prBody);
 
     let pr: PrInfo;
     try {
-      pr = createPr(repo, { base: defaultBranch, head: branch, title: `[AI] ${kindPrefix}: #${issueNumber} ${shortTitle}`.slice(0, 110), bodyFile: prBodyFile });
+      pr = createPr(repo, {
+        base: defaultBranch,
+        head: branch,
+        title: `[AI] ${kindPrefix}: #${issueNumber} ${shortTitle}`.slice(0, 110),
+        bodyFile: prBodyFile,
+      });
     } catch (err) {
       log(`PR creation failed: ${err instanceof Error ? err.message : err}`);
       const detail = redact(err instanceof Error ? err.message : String(err));
-      const body = `⚠️ **代码已完成、验证通过并推送，但自动创建 PR 失败**。分支：\`${branch}\`\n\n\`\`\`\n${detail.slice(0, 2000)}\n\`\`\`\n\n请手动创建 PR 或重试。`;
-      commentFromFile(repo, issueNumber, writeText(join(runDir, "comment.md"), body));
-      finish("failed");
+      postComment(
+        `⚠️ **代码已完成、验证通过并推送，但自动创建 PR 失败**。分支：\`${branch}\`\n\n\`\`\`\n${detail.slice(0, 2000)}\n\`\`\`\n\n请手动创建 PR 或重试。`,
+      );
+      outcome = "failed";
       process.exitCode = 1;
       return;
     }
 
-    const body = `✅ **AI 完成并通过仓库检查，已创建 PR**（${agent.name} / ${model}）：${pr.url}\n\n任务：#${issueNumber} 「${issue.title}」`;
-    commentFromFile(repo, issueNumber, writeText(join(runDir, "comment.md"), body));
+    const body = `✅ **AI 完成并创建 PR**（${agent.name} / ${model}）：${pr.url}\n\n${verificationLine(verifyResult, kind)}\n\n任务：#${issueNumber} 「${issue.title}」`;
+    postComment(body);
     log(`PR created: ${pr.url}`);
-    finish("pr");
+    outcome = "pr";
   } catch (err) {
-    const detail = redact(err instanceof Error ? err.stack ?? err.message : String(err));
+    const detail = redact(err instanceof Error ? (err.stack ?? err.message) : String(err));
     log("error:", detail);
-    try {
-      const body = `❌ **AI 流水线执行出错**\n\n\`\`\`\n${detail.slice(0, 4000)}\n\`\`\`\n\n如需重试：移除 \`${L.failed}\` 标签后重新添加 \`${L.trigger}\` 标签。`;
-      commentFromFile(repo, issueNumber, writeText(join(runDir, "comment.md"), body));
-    } catch {
-      // commenting failed too; nothing more we can do
+    if (claimed) {
+      try {
+        postComment(
+          `❌ **AI 流水线执行出错**\n\n\`\`\`\n${detail.slice(0, 4000)}\n\`\`\`\n\n如需重试：移除 \`${L.failed}\` 标签后重新添加 \`${L.trigger}\` 标签。`,
+        );
+      } catch {
+        // commenting failed too; nothing more we can do
+      }
+      outcome = "failed";
     }
-    finish("failed");
     process.exitCode = 1;
+  } finally {
+    // Always give the lock and credentials back, even on crash paths.
+    git.restoreCredentials(workDir);
+    if (locked) {
+      try {
+        releaseLock(repo, issueNumber);
+      } catch (err) {
+        log(`warning: failed to release claim lock: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    if (claimed && outcome) {
+      try {
+        finish(outcome);
+      } catch (err) {
+        log(`warning: failed to update labels: ${err instanceof Error ? err.message : err}`);
+      }
+    }
   }
 }
 

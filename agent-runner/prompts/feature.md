@@ -15,7 +15,8 @@ AI engine: {{provider}} / {{model}}
 - Understand the request and the existing codebase conventions first, then implement.
 - After changing code, run the project checks/tests if the repository defines any (see AGENTS.md / package.json). Iterate until they pass.
 - Do NOT run `git add`, `git commit`, `git push`, or `git checkout -b`: the pipeline commits and opens the PR for you.
-- Do NOT modify files under `.github/workflows/`.
+- Do NOT modify files under `.github/workflows/` or `.github/actions/`, and do NOT touch `LICENSE`.
+  The runner rejects these paths and the run fails.
 - Do NOT create or commit scratch files (`TASK.md`, logs, etc.).
 - Do NOT print or log API keys or secrets.
 - If the request is ambiguous, implement the most reasonable interpretation and explain your assumptions in your final summary.
