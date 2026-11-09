@@ -1,0 +1,164 @@
+name: ai-watch
+
+# Post-merge watchdog (H4).
+#
+# Runs hourly. If `main` is red AND the failing commit is an AI merge, the
+# pipeline does the mechanical part on its own: open an incident issue, prepare
+# a revert PR, and switch auto-merge off (circuit breaker). The human only has
+# to approve the revert.
+#
+# Scope: the repository this workflow lives in. Cross-repo (zero-file) targets
+# are watched by their own copy of this file, if they want it.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: ai-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      PR_TOKEN: ${{ secrets.EASYGH_PR_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Inspect main health
+        id: health
+        run: |
+          set -euo pipefail
+          RUNS=$(gh run list -R "$REPO" --branch main --workflow ci.yml --limit 1 --json conclusion,headSha,url)
+          CONCLUSION=$(jq -r '.[0].conclusion // ""' <<<"$RUNS")
+          SHA=$(jq -r '.[0].headSha // ""' <<<"$RUNS")
+          URL=$(jq -r '.[0].url // ""' <<<"$RUNS")
+          {
+            echo "conclusion=$CONCLUSION"
+            echo "sha=$SHA"
+            echo "url=$URL"
+          } >> "$GITHUB_OUTPUT"
+          if [ -z "$SHA" ]; then
+            echo "needs_revert=false" >> "$GITHUB_OUTPUT"
+            echo "no main CI run found"
+            exit 0
+          fi
+          SUBJECT=$(gh api "repos/${REPO}/commits/${SHA}" --jq '.commit.message' | head -n1)
+          echo "subject=$SUBJECT" >> "$GITHUB_OUTPUT"
+          echo "main=${CONCLUSION} sha=${SHA:0:7} subject=${SUBJECT}"
+          if [ "$CONCLUSION" = "failure" ] && [[ "$SUBJECT" == "[AI]"* ]]; then
+            echo "needs_revert=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_revert=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open incident and prepare revert
+        if: steps.health.outputs.needs_revert == 'true'
+        env:
+          SHA: ${{ steps.health.outputs.sha }}
+          SUBJECT: ${{ steps.health.outputs.subject }}
+          RUN_URL: ${{ steps.health.outputs.url }}
+        run: |
+          set -euo pipefail
+          SHORT="${SHA:0:7}"
+          BRANCH="ai/revert-${SHORT}"
+
+          # Idempotent: never open two incidents for the same commit.
+          if gh issue list -R "$REPO" --label ai-incident --state open --limit 50 --json body \
+              --jq '.[].body' 2>/dev/null | grep -q "$SHORT"; then
+            echo "incident already open for $SHORT"
+            exit 0
+          fi
+          gh label create ai-incident -R "$REPO" --color B60205 --description "AI 合并后 main 失败" >/dev/null 2>&1 || true
+
+          BODY=$(mktemp)
+          {
+            echo "<!-- easygh-incident sha=${SHA} -->"
+            echo
+            echo "## main CI 失败，且失败提交来自 AI 合并"
+            echo
+            echo "- commit: \`${SHA}\`"
+            echo "- subject: \`${SUBJECT}\`"
+            echo "- run: ${RUN_URL}"
+            echo
+            echo "流水线已自动："
+            echo "1. 把 \`AI_AUTOMERGE\` 切换为 \`off\`（熔断）；"
+            echo "2. 准备 revert PR（下方）——**合并它即可回滚**。"
+            echo
+            echo "人工只需：审查并合并 revert PR，或说明为何保持现状。"
+          } > "$BODY"
+
+          REVERT_NOTE="revert PR 创建失败（可能需要手动 rebase/回滚）。"
+          if git fetch -q origin main && git checkout -q -B "$BRANCH" origin/main; then
+            if git -c user.name="EasyGithub Watchdog" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" revert --no-edit "$SHA"; then
+              git push -q -u origin "$BRANCH"
+              PR_URL=$(gh pr create -R "$REPO" --base main --head "$BRANCH" \
+                --title "Revert ${SUBJECT}" --body "自动回滚 ${SHA:0:7}（main CI 失败）。由 ai-watch 生成。" 2>&1) \
+                && REVERT_NOTE="已自动创建 revert PR：${PR_URL}" \
+                || REVERT_NOTE="revert PR 创建失败：${PR_URL}"
+            else
+              REVERT_NOTE="自动 revert 冲突（commit ${SHORT}），请人工回滚。"
+              git revert --abort || true
+            fi
+          fi
+          {
+            echo
+            echo "3. ${REVERT_NOTE}"
+          } >> "$BODY"
+
+          gh issue create -R "$REPO" --title "incident: AI 合并导致 main 失败 (${SHORT})" \
+            --body-file "$BODY" --label ai-incident --assignee "${{ github.repository_owner }}" >/dev/null \
+            || gh issue create -R "$REPO" --title "incident: AI 合并导致 main 失败 (${SHORT})" --body-file "$BODY" --label ai-incident
+
+      - name: Trip auto-merge circuit breaker
+        if: steps.health.outputs.needs_revert == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.EASYGH_PR_TOKEN || github.token }}
+        run: |
+          if gh variable set AI_AUTOMERGE --body off 2>/dev/null; then
+            echo "AI_AUTOMERGE=off"
+          else
+            echo "::warning::could not set AI_AUTOMERGE (needs admin token); disable auto-merge manually"
+          fi
+
+      - name: Detect human reverts of AI merges
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CUTOFF=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          REVERTS=$(gh pr list -R "$REPO" --state merged --limit 50 --json number,title,mergedAt,url \
+            --jq "[.[] | select(.title | startswith(\"Revert \\\"[AI]\")) | select(.mergedAt > \"${CUTOFF}\")]")
+          COUNT=$(jq 'length' <<<"$REVERTS")
+          echo "recent AI reverts: ${COUNT}"
+          if [ "$COUNT" -eq 0 ]; then exit 0; fi
+          gh label create ai-incident -R "$REPO" --color B60205 --description "AI 合并后 main 失败" >/dev/null 2>&1 || true
+          jq -r '.[] | "- #\(.number) \(.title) \(.url)"' <<<"$REVERTS" > /tmp/reverts.md
+          if gh issue list -R "$REPO" --label ai-incident --state open --limit 50 --json body \
+              --jq '.[].body' 2>/dev/null | grep -q "近期 AI 合并被回滚"; then
+            echo "revert incident already open"
+            exit 0
+          fi
+          BODY=$(mktemp)
+          {
+            echo "<!-- easygh-incident recent-reverts -->"
+            echo
+            echo "## 近期 AI 合并被回滚"
+            echo
+            cat /tmp/reverts.md
+            echo
+            echo "这是信任度信号：考虑把 \`AI_AUTOMERGE\` 调回 \`probation\` 或 \`off\`，并把该场景加入 \`eval/tasks/\`。"
+          } > "$BODY"
+          gh issue create -R "$REPO" --title "incident: 近期 AI 合并被回滚" --label ai-incident --body-file "$BODY"

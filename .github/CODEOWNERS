@@ -1,0 +1,14 @@
+# Owners of the areas where an AI change must never land unreviewed.
+# Paired with "Require review from Code Owners" in the main branch protection.
+# Keep this file in sync with `HIGH_PREFIXES` in agent-runner/src/risk.ts.
+
+*                       @wangzhizhou
+
+# The pipeline's referee and trust boundary.
+/.github/               @wangzhizhou
+/agent-runner/          @wangzhizhou
+/scripts/               @wangzhizhou
+/eval/                  @wangzhizhou
+
+# Legal / licensing terms are human-owned.
+/LICENSE                @wangzhizhou
