@@ -51,7 +51,9 @@ Routing: issue label `agent:<name>` > repo variable `AI_AGENT` > rules in
   `AI_MAX_ATTEMPTS` (default `3`, verification retries), `VERIFY_CMD` (override the check
   command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`, then
   `cargo test` / `go test ./...` by language),
-  `AI_AGENT` (force a specific agent for every run; default: auto-route).
+  `AI_AGENT` (force a specific agent for every run; default: auto-route),
+  `AI_AUTOMERGE` (`off`/`probation`/`on`, default `off`), `AI_MAX_PRS_PER_DAY` (default 10),
+  `AI_REVIEWER` (cc'd when the agent needs a decision).
   On EasyGithub itself (public repo) all of this is already configured; other repos need the
   installer (`install-to-repo.sh`) or the App to set it up.
 - **Zero-file targets (App mode)** get their verification command from the hub, since the target
@@ -96,7 +98,8 @@ Every pull request (including AI pipeline PRs) runs `npm run check` via `.github
 (`easygithub-ai`, installed org-wide) lets the hub poll org Issues and write
 branches/PRs in any installed repo. Targets contain **no workflow, no runner,
 no secret**. Mark an Issue for AI by adding the `ai` label or putting
-`easygh-ai` anywhere in its title/body. Polling runs every 5 minutes (EasyGithub is public, so these runs are free/unmetered)
+`easygh-ai` anywhere in its title/body (title/body markers are only honoured from OWNER/MEMBER/
+COLLABORATOR authors — the agent executes untrusted text, so outsiders cannot trigger it). Polling runs every 5 minutes (EasyGithub is public, so these runs are free/unmetered)
 (`.github/workflows/ghapp-scan.yml` → `agent-runner/src/dispatcher.ts`);
 secrets live only in the hub.
 
@@ -162,11 +165,19 @@ Runs the exact same runner code locally (clone → branch → Pi → commit → 
 
 ```text
 .github/workflows/ai-agent.yml   # the pipeline
+.github/workflows/ai-decide.yml  # human commands (retry/answer/cancel/waive/automerge)
+.github/workflows/ai-watch.yml   # post-merge watchdog (incident + revert PR + circuit breaker)
+.github/workflows/ai-retro.yml   # weekly retro issue
+.github/CODEOWNERS               # which changes always need a human
 agent-runner/                    # Agent Runner (TypeScript, zero runtime deps)
   prompts/                       # task templates (bug-fix / feature / review)
   src/main.ts                    # orchestration
+  src/risk.ts                    # risk tiers + auto-merge predicate
   src/git.ts, src/github.ts      # git + gh wrappers
   src/agents/{types,pi,registry}.ts
+  test/                          # node:test suite (runs in CI)
+eval/tasks/                      # frozen evaluation tasks (hidden tests)
+docs/learnings.md                # curated context injected into TASK.md
 scripts/                         # dev-run.sh, create-labels.sh
 ```
 
@@ -174,6 +185,7 @@ Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committi
 
 ## 参考文档
 
+- [端到端 AI 开发工作流（自动化边界 / 人机分工）](docs/ai-workflow.md)
 - [多 Agent 启用与模型配置](docs/agents.md)
 - [实时响应方案（事件驱动 vs 轮询）](docs/realtime.md)
 - [在其它组织中使用 EasyGithub](docs/other-orgs.md)

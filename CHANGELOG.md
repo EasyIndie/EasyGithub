@@ -9,6 +9,34 @@
 ### Added
 
 - Agent Runner 独立验证与失败自动重试：agent 完成后 runner 会独立运行仓库检查 `npm run check`，失败时把输出反馈给 agent 重试，最多 `AI_MAX_ATTEMPTS`=3 次。
+- 变更审计 `agent-runner/src/policy.ts`：提交前做路径白名单（拒绝 `.github/workflows/**`、`.github/actions/**`、`LICENSE`；标记 `ai-core` 供人工审查）、剔除 vendored/生成目录、扫描新增行中的密钥。
+- Agent 环境白名单 `agent-runner/src/env.ts`：子进程不再继承 `GH_TOKEN` / `GITHUB_TOKEN` / `EASYGH_PR_TOKEN`；git push 凭据在 agent 阶段从工作树移除（内存暂存，推送前恢复）。
+- 原子认领锁 `ai-lock-issue-<n>`（Git Data tag ref CAS），支持按 TTL 回收僵尸运行；`finally` 中统一释放锁与更新标签。
+- 时间预算 `AGENT_BUDGET_MS` / `PI_TIMEOUT_MS` / `VERIFY_TIMEOUT_MS` / `DISPATCH_BUDGET_MS`，超预算时给出明确失败评论而不是被 job timeout 砍断。
+- `review` 任务类型落地：只读，输出 Review 报告作为 Issue 评论，不再产生空改动流水线。
+- 新标签：`ai-core`、`ai-verify-changed`。
+
+### Added (automation / minimal human intervention)
+
+- 风险分级 `agent-runner/src/risk.ts`：low/medium/high 三档 + 自动合并谓词；high 风险一律**草稿 PR**。
+- 自动合并 `AI_AUTOMERGE=off|probation|on`：仅 low 风险 + 可信验证时 `gh pr merge --auto`；probation 只信任 docs/测试改动。
+- 结构化阻塞：agent 写 `EASYGH_BLOCKED.md` 即触发 `ai-needs-input`，评论提问并停止，不建 PR。
+- 每日配额 `AI_MAX_PRS_PER_DAY`（默认 10），超限标记 `ai-deferred`。
+- 人工命令入口 `.github/workflows/ai-decide.yml`：retry / cancel / answer / waive / set-automerge，带权限校验与 `easygh-decision` 审计。
+- 合并后看护 `.github/workflows/ai-watch.yml`：main CI 红且来自 AI 合并 → 事故 Issue + 自动 revert PR + 熔断（`AI_AUTOMERGE=off`）；检测 24h 内的人工 revert。
+- 周度复盘 `.github/workflows/ai-retro.yml` + `agent-runner/src/retro.ts`：失败签名聚类并开 `retro` Issue（不带 `ai`，由人决定是否执行）。
+- 评测 `agent-runner/src/eval.ts` + `eval/tasks/`：冻结任务 + **隐藏测试**（agent 结束才落盘），输出 pass@1。
+- 经验注入 `docs/learnings.md` → `TASK.md`（按相关性取 2 段，有长度上限）。
+- 运行指标 `metrics.json`（产物 + 单行 JSON 日志）。
+- 测试套件 `agent-runner/test/`（37 个用例，`npm run check` 现在包含测试）。
+- `.github/CODEOWNERS`：`.github/**`、`agent-runner/**`、`scripts/**`、`eval/**`、`LICENSE` 必须 code owner 审查。
+- 新标签：`ai-needs-input`、`ai-deferred`、`ai-automerge`、`ai-incident`、`retro`。
+
+### Changed
+
+- 检查命令在 agent 运行前冻结；若检查配置被改动，执行冻结版本并标记 `ai-verify-changed`，不再把"跳过验证"当作"验证通过"。
+- App 轮询模式：`easygh-ai` 标记仅接受 OWNER/MEMBER/COLLABORATOR 作者，防止外部驱动注入。
+- 移除 workflow 中无效的 "Skip already-handled issues" 步骤（步骤内 `exit 0` 并不会跳过后续步骤），去重统一由 runner 负责。
 
 ### Verified
 

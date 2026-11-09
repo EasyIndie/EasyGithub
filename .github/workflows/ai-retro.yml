@@ -1,0 +1,33 @@
+name: ai-retro
+
+# Weekly retrospective: turn labels + comments into one review issue.
+#
+# The issue is labelled `retro` (NOT `ai`): deciding whether a finding is worth
+# fixing is a human call (H1). Turning a finding into work is just adding `ai`.
+on:
+  schedule:
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ai-retro
+  cancel-in-progress: false
+
+jobs:
+  retro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.EASYGH_PR_TOKEN || github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Build and file the weekly retro
+        run: node agent-runner/src/retro.ts --days 7 --create

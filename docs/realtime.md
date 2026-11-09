@@ -63,7 +63,7 @@ GitHub App (easygithub-ai)
         ▼
   Cloudflare Worker（免费）
      ├─ 校验 HMAC（webhook secret）
-     ├─ 过滤：label==ai 或 title/body 含 easygh-ai
+     ├─ 过滤：label==ai 或 title/body 含 easygh-ai（仅限 OWNER/MEMBER/COLLABORATOR）
      └─ 用 App 私钥（存 Worker secret）签安装令牌
         └─ POST repos/EasyIndie/EasyGithub/dispatches
               │  repository_dispatch: ai-issue {repo, issue_number}

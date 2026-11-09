@@ -35,6 +35,8 @@ gh issue edit 15 --add-label "ai,agent:claude"
 
 其它可选变量：`AI_MODEL`（Pi 模型，默认 `deepseek-v4-flash`）、`AI_THINKING`（默认 `high`）、`AI_MAX_ATTEMPTS`（默认 `3`，验证失败重试次数）、`VERIFY_CMD`（覆盖自动探测的检查命令）。
 
+时间预算（可选）：`AGENT_BUDGET_MS`（单次运行总预算，默认 75 分钟）、`PI_TIMEOUT_MS`（单次 agent 上限，默认 15 分钟）、`VERIFY_TIMEOUT_MS`（单次检查上限，默认 10 分钟）。三者应满足 `AI_MAX_ATTEMPTS * (PI_TIMEOUT_MS + VERIFY_TIMEOUT_MS) < AGENT_BUDGET_MS < job timeout`。
+
 ## 所需密钥
 
 三种 Agent 只需要 **一个**仓库 Secret：
@@ -58,6 +60,14 @@ DEEPSEEK_API_KEY   # DeepSeek 平台 API Key，三个 Agent 共用
   - `codex` → `npm install -g @openai/codex`，再运行 DeepSeek 一键配置脚本，用 `DEEPSEEK_API_KEY` 写入 `~/.codex/config.toml`
 
 三者都复用同一套独立验证与重试循环（`AI_MAX_ATTEMPTS`），验证通过后才提交并创建 PR。
+
+## 守门规则（runner 侧，prompt 只是提示）
+
+- **检查冻结**：agent 开始前先解析检查命令并记录脚本正文；运行后若 `package.json` / `Cargo.toml` / `go.mod` 等被改动，改为执行冻结版本，并给 PR 打 `ai-verify-changed`。
+- **路径策略**：`.github/workflows/**`、`.github/actions/**`、`LICENSE` 直接拒绝（运行失败）；`agent-runner/**`、`.github/**`、`scripts/**` 允许但打 `ai-core`，必须人工审查。
+- **密钥扫描**：提交前扫描新增行的 `sk-*` / `gh*_` / `AKIA*` / 私钥块等，命中即失败，不推送。
+- **凭据隔离**：agent 子进程只拿到 provider key，拿不到 `GH_TOKEN`；`git` 的 push 凭据在 agent 阶段从工作树移除，推送前恢复。
+- **原子认领**：用 tag ref（`ai-lock-issue-<n>`）做服务端 CAS，避免 `labeled` 工作流与 App 轮询同时启动；超过 `LOCK_TTL_MS`（默认 3 小时）视为死锁自动回收。
 
 ## Claude Code 官方配置参考（DeepSeek 接入）
 

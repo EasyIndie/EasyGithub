@@ -24,17 +24,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Skip already-handled issues
-        run: |
-          LABELS=$(gh issue view "${{ github.event.issue.number }}" -R "${{ github.repository }}" --json labels -q '[.labels[].name]')
-          for x in ai-running ai-pr ai-failed ai-done; do
-            if echo "$LABELS" | grep -q "\"$x\""; then
-              echo "issue already handled ($x); skipping."
-              exit 0
-            fi
-          done
-          echo "issue is fresh; proceeding."
-
+      # Already-handled issues are filtered by the runner itself (it owns the
+      # label check AND the atomic claim lock), so no skip step is needed here:
+      # a step-level `exit 0` would not skip the checkout below anyway.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -54,10 +46,19 @@ jobs:
           PROVIDER: deepseek
           MODEL: ${{ vars.AI_MODEL || 'deepseek-v4-flash' }}
           THINKING: ${{ vars.AI_THINKING || '' }}
-          PI_TIMEOUT_MS: "1500000"
+          # Time budget (keep the sum below the 90 min job timeout):
+          #   3 attempts * (15 min agent + 10 min verify) + overhead ~= 80 min
+          AGENT_BUDGET_MS: "4500000"
+          PI_TIMEOUT_MS: "900000"
+          VERIFY_TIMEOUT_MS: "600000"
           # V0.3: independent verification inside the ai-agent workflow
           # (avoids the approval gate GitHub applies to bot-created PRs).
           AI_MAX_ATTEMPTS: ${{ vars.AI_MAX_ATTEMPTS || '3' }}
+          # Delivery automation: off | probation | on (default off = humans merge).
+          AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
+          AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
+          # cc'd when the agent needs a decision (ai-needs-input).
+          AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
           # optional: override the auto-detected check command
           # VERIFY_CMD: "npm run lint && npm test"
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

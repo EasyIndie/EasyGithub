@@ -1,0 +1,18 @@
+{
+  "id": "example-sum",
+  "repo": "EasyIndie/EasyGithub",
+  "baseCommit": "27b41fa5092a32b34166f479f6b85f6b16589388",
+  "issue": {
+    "title": "feat: add a sum helper",
+    "body": "Add `agent-runner/src/util/sum.ts` exporting `export function sum(a: number, b: number): number` that returns the sum of both arguments. Dependency-free, no other files.",
+    "labels": ["feature"]
+  },
+  "verifyCmd": "node --test agent-runner/test/sum.eval.test.ts",
+  "hidden": [
+    {
+      "path": "agent-runner/test/sum.eval.test.ts",
+      "content": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { sum } from \"../src/util/sum.ts\";\n\ntest(\"sum adds integers\", () => {\n  assert.equal(sum(2, 3), 5);\n  assert.equal(sum(-1, 1), 0);\n});\n"
+    }
+  ],
+  "timeoutMs": 900000
+}

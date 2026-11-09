@@ -10,7 +10,7 @@ name: ghapp-scan
 #
 # Trigger markers for an issue (union):
 #   - label `ai`
-#   - marker `easygh-ai` in the title or body
+#   - marker `easygh-ai` in the title or body, from an OWNER/MEMBER/COLLABORATOR author
 # Poll cadence: EasyGithub is a PUBLIC repo, so Actions here are free/unmetered.
 # */5 gives ~5-minute latency at zero quota cost. For real-time, see docs/realtime.md
 # (event-driven via webhook is still needed for sub-minute response).
@@ -50,11 +50,19 @@ jobs:
           ORG: ${{ vars.EASYGH_ORG || 'EasyIndie' }}
           REPO_FILTER: ${{ vars.EASYGH_REPO_FILTER }}
           MAX_ISSUES: ${{ vars.EASYGH_MAX_ISSUES || '4' }}
+          # Wall-clock budget per scan (job timeout is 60 min) and per issue
+          # (agent session + retries). Keeps a slow target from eating the queue.
+          DISPATCH_BUDGET_MS: ${{ vars.EASYGH_DISPATCH_BUDGET_MS || '3000000' }}
+          AGENT_BUDGET_MS: ${{ vars.EASYGH_AGENT_BUDGET_MS || '2400000' }}
+          PI_TIMEOUT_MS: "900000"
+          AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
+          AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
+          AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
           # Per-repo verification for zero-file targets (JSON map, hub-side);
           # overrides the committed agent-runner/config/verify.json.
           # {"EasyIndie/EasyBot":"cargo test"}   (empty -> file/auto-detect)
           EASYGH_VERIFY_CMDS: ${{ vars.EASYGH_VERIFY_CMDS }}
-          VERIFY_TIMEOUT_MS: ${{ vars.EASYGH_VERIFY_TIMEOUT_MS }}
+          VERIFY_TIMEOUT_MS: ${{ vars.EASYGH_VERIFY_TIMEOUT_MS || '600000' }}
           RUNNER_TEMP: ${{ runner.temp }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           # Claude Code agent -> DeepSeek (Anthropic-compatible endpoint)

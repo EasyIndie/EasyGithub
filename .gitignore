@@ -6,3 +6,4 @@ dist/
 .tmp/
 TASK.md
 agent-runner/*.tsbuildinfo
+eval/results/

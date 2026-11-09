@@ -1,0 +1,125 @@
+name: ai-decide
+
+# The human interface for the pipeline.
+#
+# Everything the pipeline cannot decide alone is expressed as a workflow
+# dispatch with an explicit, auditable action:
+#   retry          re-arm a failed / blocked / deferred issue
+#   cancel         abandon an in-flight run and drop its claim lock
+#   answer         reply to a "needs input" question and re-run
+#   waive          record a human exception (audit only, never bypasses policy)
+#   set-automerge  switch AI_AUTOMERGE between off / probation / on
+#
+# Only repository writers (admin / maintain / write) may use it. Every action
+# leaves an `easygh-decision` comment on the issue.
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Issue number"
+        required: true
+        type: string
+      action:
+        description: "Action"
+        required: true
+        type: choice
+        options:
+          - retry
+          - cancel
+          - answer
+          - waive
+          - set-automerge
+      note:
+        description: "Answer / exception note (answer, waive)"
+        required: false
+        type: string
+        default: ""
+      mode:
+        description: "AI_AUTOMERGE value (set-automerge)"
+        required: false
+        type: choice
+        options:
+          - off
+          - probation
+          - on
+        default: off
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: ai-decide-${{ inputs.issue }}
+  cancel-in-progress: false
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ inputs.issue }}
+      ACTION: ${{ inputs.action }}
+      NOTE: ${{ inputs.note }}
+      MODE: ${{ inputs.mode }}
+      ACTOR: ${{ github.actor }}
+    steps:
+      - name: Authorize actor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PERM=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq .permission 2>/dev/null || echo none)
+          case "$PERM" in
+            admin|maintain|write) echo "authorized (${PERM}) as ${ACTOR}" ;;
+            *) echo "::error::${ACTOR} has no write access (${PERM})"; exit 1 ;;
+          esac
+          case "$ISSUE" in
+            ''|*[!0-9]*) echo "::error::issue must be a number"; exit 1 ;;
+          esac
+
+      - name: Apply action
+        env:
+          # Repo variables need admin; the pipeline PAT covers that when set.
+          GH_TOKEN: ${{ secrets.EASYGH_PR_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          lock="repos/${REPO}/git/refs/tags/ai-lock-issue-${ISSUE}"
+          audit() {
+            gh issue comment "$ISSUE" -R "$REPO" \
+              --body "<!-- easygh-decision actor=${ACTOR} action=${ACTION} -->"$'\n\n'"${1}"
+          }
+          rearm() {
+            for label in ai-running ai-pr ai-failed ai-done ai-needs-input ai-deferred ai-stale; do
+              gh issue edit "$ISSUE" -R "$REPO" --remove-label "$label" >/dev/null 2>&1 || true
+            done
+            gh issue edit "$ISSUE" -R "$REPO" --add-label ai
+          }
+
+          case "$ACTION" in
+            retry)
+              rearm
+              audit "已按 ${ACTOR} 的请求重新排队（retry）。"
+              ;;
+            cancel)
+              gh issue edit "$ISSUE" -R "$REPO" --remove-label ai-running >/dev/null 2>&1 || true
+              gh api -X DELETE "$lock" >/dev/null 2>&1 || true
+              audit "已按 ${ACTOR} 的请求取消当前运行（cancel）。锁已释放。"
+              ;;
+            answer)
+              [ -n "$NOTE" ] || { echo "::error::note is required for answer"; exit 1; }
+              gh issue comment "$ISSUE" -R "$REPO" --body "$NOTE"
+              rearm
+              audit "已把 ${ACTOR} 的回答交给流水线（answer → retry）。"
+              ;;
+            waive)
+              [ -n "$NOTE" ] || { echo "::error::note is required for waive"; exit 1; }
+              audit "人工决定（waive，由 ${ACTOR} 记录，不会绕过策略）：${NOTE}"
+              ;;
+            set-automerge)
+              gh variable set AI_AUTOMERGE --body "$MODE"
+              audit "AI_AUTOMERGE 已设为 \`${MODE}\`（由 ${ACTOR}）。"
+              ;;
+            *)
+              echo "::error::unknown action ${ACTION}"; exit 1 ;;
+          esac
