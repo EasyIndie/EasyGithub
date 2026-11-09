@@ -4,7 +4,7 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 
 ## Layout
 
-- `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`; cross-repo dispatcher: `agent-runner/src/dispatcher.ts`. Guardrails: `src/verify.ts` (frozen gate), `src/policy.ts` (path/secret audit), `src/risk.ts` (risk tiers + auto-merge), `src/env.ts` (agent env allow-list). Support tools: `src/eval.ts` (frozen tasks), `src/retro.ts` (weekly report), `src/metrics.ts`, `src/learnings.ts`.
+- `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`; cross-repo dispatcher: `agent-runner/src/dispatcher.ts`. Guardrails: `src/verify.ts` (frozen gate), `src/policy.ts` (path/secret audit), `src/risk.ts` (risk tiers + auto-merge), `src/env.ts` (agent env allow-list). Support tools: `src/eval.ts` (frozen tasks), `src/retro.ts` (weekly report), `src/watch.ts` (cross-repo post-merge watchdog), `src/metrics.ts`, `src/learnings.ts`.
 - `agent-runner/prompts/` — task templates rendered by the runner (bug-fix / feature / review).
 - `agent-runner/config/agents.json` — agent routing rules.
 - `agent-runner/config/verify.json` — per-repo verification commands for zero-file (App mode) targets; overridable by hub variable `EASYGH_VERIFY_CMDS`.

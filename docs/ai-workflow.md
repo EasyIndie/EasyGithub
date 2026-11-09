@@ -101,11 +101,12 @@ auto_merge := AI_AUTOMERGE in {"probation","on"}          # 默认 off
 | 时间/成本预算 | `AGENT_BUDGET_MS` 等，超限给结论不卡死 | ✅ `main.ts` |
 | 每日配额 | `AI_MAX_PRS_PER_DAY`，超限标 `ai-deferred` | ✅ `main.ts` |
 | 结构化阻塞 | `EASYGH_BLOCKED.md` → `ai-needs-input`，不建 PR | ✅ `main.ts`、prompts |
-| 自动回滚 | 合并后 watchdog：main 红 → 事故 Issue + revert PR + 熔断 | ✅ `.github/workflows/ai-watch.yml` |
+| 自动回滚 | 合并后 watchdog：main 红 → 事故 Issue + revert PR + 熔断 | ✅ `src/watch.ts`（目标仓库，随 dispatcher 每 5 分钟巡检）+ `ai-watch.yml`（hub 本身） |
+| 熔断闭锁 | 打开中的 `ai-incident` 会让该仓库停止自动合并（关掉 Issue 即恢复） | ✅ `hasOpenIncident()` + `main.ts` |
 | 信任升降级 | 熔断把 `AI_AUTOMERGE` 置 off；人工用 `ai-decide` 恢复 | ✅ |
 | 回归评测 | 冻结任务集 `eval/tasks/` + 隐藏测试 | ✅ `agent-runner/src/eval.ts` |
 | 决策留痕 | `easygh-decision` 评论 + `metrics.json` 产物 | ✅ |
-| 周度复盘 | `retro` Issue（不带 `ai`，由人决定是否执行） | ✅ `.github/workflows/ai-retro.yml` |
+| 周度复盘 | `retro` Issue（不带 `ai`，由人决定是否执行），覆盖 `EASYGH_RETRO_REPOS` 列出的全部仓库 | ✅ `src/retro.ts` + `ai-retro.yml` |
 
 ## 6. 指标（自动化的验收标准）
 
@@ -174,7 +175,8 @@ gh api -X PATCH repos/EasyIndie/EasyGithub/branches/main/protection/required_pul
 | 评测 | `agent-runner/src/eval.ts` + `eval/tasks/` |
 | 周报 | `agent-runner/src/retro.ts` |
 | 人工命令 | `.github/workflows/ai-decide.yml` |
-| 合并后看护 | `.github/workflows/ai-watch.yml` |
+| 合并后看护（目标仓库） | `agent-runner/src/watch.ts`（dispatcher 调用） |
+| 合并后看护（hub） | `.github/workflows/ai-watch.yml` |
 | 周度复盘 | `.github/workflows/ai-retro.yml` |
 
 ## 10. 操作手册（人只学这几条）
@@ -189,7 +191,9 @@ gh api -X PATCH repos/EasyIndie/EasyGithub/branches/main/protection/required_pul
 | 开启/收紧自动合并 | `ai-decide` → `set-automerge`（`off` / `probation` / `on`；当前为 `on`） |
 | 让高风险改动进主干 | 审查草稿 PR → 点 "Ready for review" → 批准合并（code owner 必须） |
 | 回滚出事的 AI 合并 | 等 `ai-incident` Issue 里的 revert PR，批准合并即可 |
-| 看一周发生了什么 | 每周一自动生成的 `retro` Issue |
+| 看一周发生了什么 | 每周一自动生成的 `retro` Issue（覆盖 `EASYGH_RETRO_REPOS` 里的仓库） |
+| 恢复某个仓库的自动合并 | 关闭该仓库的 `ai-incident` Issue（熔断闭锁随之解除） |
 | 度量一次 prompt/model 改动的收益 | `node agent-runner/src/eval.ts --task <id> --model <m>`，看 `pass@1` |
 
-相关变量：`AI_AUTOMERGE`（默认 off）、`AI_MAX_PRS_PER_DAY`（默认 10）、`AI_REVIEWER`（needs-input 时 cc 的人）、`AI_AGENT`、`AI_MODEL`、`AI_MAX_ATTEMPTS`、`AGENT_BUDGET_MS`、`PI_TIMEOUT_MS`、`VERIFY_TIMEOUT_MS`。
+相关变量：`AI_AUTOMERGE`（默认 off）、`AI_MAX_PRS_PER_DAY`（默认 10）、`AI_REVIEWER`（needs-input 时 cc 的人）、
+`EASYGH_WATCHDOG`（默认 `on`，跨仓库看护开关）、`EASYGH_RETRO_REPOS`（周报覆盖的仓库，逗号分隔）、`AI_AGENT`、`AI_MODEL`、`AI_MAX_ATTEMPTS`、`AGENT_BUDGET_MS`、`PI_TIMEOUT_MS`、`VERIFY_TIMEOUT_MS`。

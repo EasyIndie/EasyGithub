@@ -12,6 +12,7 @@ import {
   countRecentAiPrs,
   createPr,
   getIssue,
+  hasOpenIncident,
   listLabels,
   mergePrAuto,
   recentHumanComments,
@@ -572,7 +573,9 @@ async function main(): Promise<void> {
         : null,
       paths: audit.paths,
     });
-    if (decision.allowed && !draft) {
+    const incidentOpen = hasOpenIncident(repo);
+    if (incidentOpen) log("auto-merge suppressed: open ai-incident (circuit breaker latch)");
+    if (decision.allowed && !draft && !incidentOpen) {
       const armed = mergePrAuto(repo, pr.number);
       automergeArmed = armed.ok;
       if (armed.ok) {
@@ -582,7 +585,7 @@ async function main(): Promise<void> {
         log(`warning: auto-merge could not be armed: ${armed.detail}`);
       }
     } else {
-      log(`auto-merge not armed: ${decision.reason}`);
+      log(`auto-merge not armed: ${incidentOpen ? "open incident latch" : decision.reason}`);
     }
 
     const body = [

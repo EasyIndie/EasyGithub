@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runAsync, runSync } from "./util/exec.ts";
+import { runWatchdog } from "./watch.ts";
 
 /**
  * Central dispatcher for the GitHub-App (zero-file) cross-repo mode.
@@ -233,6 +234,23 @@ async function main(): Promise<void> {
   // Total wall clock for one scan. The workflow job timeout is 60 min; stop
   // picking up new issues in time to let the current one finish cleanly.
   const deadlineMs = intEnv("DISPATCH_BUDGET_MS", 50 * 60 * 1000, 120_000, 6 * 60 * 60 * 1000);
+  // Cross-repo post-merge watchdog: the targets cannot host ai-watch themselves
+  // (zero-file mode), so the dispatcher inspects their default branch here.
+  // An incident it opens also latches auto-merge off for that repository.
+  if ((process.env.EASYGH_WATCHDOG ?? "on").toLowerCase() !== "off") {
+    const results = runWatchdog({
+      filter: process.env.REPO_FILTER?.split(",").map((s) => s.trim()).filter(Boolean),
+      maxRepos: intEnv("MAX_REPOS", 40, 1, 200),
+    });
+    for (const result of results) {
+      if (result.action === "none") continue;
+      console.log(`[watch] ${result.repo}: ${result.action} — ${result.detail}`);
+    }
+    console.log(`[watch] checked ${results.length} repo(s), ${results.filter((r) => r.action === "incident").length} incident(s)`);
+  } else {
+    console.log("[watch] disabled (EASYGH_WATCHDOG=off)");
+  }
+
   const list = candidates();
   console.log(`[dispatch] org=${org} candidates=${list.length} (max ${maxIssues}, budget ${Math.round(deadlineMs / 60000)}m)`);
 
