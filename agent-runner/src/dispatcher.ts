@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runAsync, runSync } from "./util/exec.ts";
-import { runWatchdog } from "./watch.ts";
+import { listInstallationRepos, runWatchdog } from "./watch.ts";
 
 /**
  * Central dispatcher for the GitHub-App (zero-file) cross-repo mode.
@@ -115,8 +115,13 @@ function searchCandidates(): Candidate[] {
   const maxRepos = intEnv("MAX_REPOS", 40, 1, 200);
   let repos: string[] = [];
   try {
-    repos = gh(["api", "/installation/repositories", "--jq", ".repositories[].full_name"])
-      .split("\n").map((s) => s.trim()).filter(Boolean);
+    // Paginated: /installation/repositories returns 30 per page and app tokens
+    // cannot use `gh --paginate`.
+    repos = listInstallationRepos();
+    if (repos.length === 0) {
+      console.log("[dispatch] installation repos returned nothing");
+      return [...set.values()];
+    }
   } catch (e) {
     console.log(`[dispatch] installation repos failed: ${e instanceof Error ? e.message : e}`);
     return [...set.values()];

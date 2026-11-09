@@ -108,15 +108,33 @@ function mapRuns(raw: {
   }));
 }
 
+/**
+ * Repositories of the App installation, across all pages.
+ *
+ * The endpoint returns 30 per page by default, and installation tokens cannot
+ * use `gh --paginate`, so page explicitly (an out-of-range page is an empty
+ * list, not an error).
+ */
+export function listInstallationRepos(): string[] {
+  const all: string[] = [];
+  for (let page = 1; page <= 50; page++) {
+    const data = ghJson<{ repositories?: Array<{ full_name?: string }> }>([
+      "api",
+      `/installation/repositories?per_page=100&page=${page}`,
+      "--jq",
+      "{repositories: [.repositories[] | {full_name}]}",
+    ]);
+    if (!data) break;
+    const names = (data.repositories ?? []).map((repo) => repo.full_name ?? "").filter(Boolean);
+    all.push(...names);
+    if (names.length < 100) break;
+  }
+  return [...new Set(all)];
+}
+
 /** Repositories of the App installation (optionally filtered). */
 export function discoverRepos(filter: string[] | undefined): string[] {
-  const data = ghJson<{ repositories?: Array<{ full_name?: string }> }>([
-    "api",
-    "/installation/repositories",
-    "--jq",
-    "{repositories: [.repositories[] | {full_name}]}",
-  ]);
-  const all = (data?.repositories ?? []).map((repo) => repo.full_name ?? "").filter(Boolean);
+  const all = listInstallationRepos();
   return filter && filter.length > 0 ? all.filter((repo) => filter.includes(repo)) : all;
 }
 
