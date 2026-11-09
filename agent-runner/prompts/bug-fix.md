@@ -20,6 +20,10 @@ AI engine: {{provider}} / {{model}}
 - Do NOT create or commit scratch files (`TASK.md`, logs, etc.).
 - Do NOT print or log API keys or secrets.
 - If you get stuck, state precisely what you need instead of making destructive guesses.
+- If the request is genuinely ambiguous or needs a decision only a human can make
+  (product behaviour, credentials, external systems), write `EASYGH_BLOCKED.md` at the
+  repository root with ONE question and the options you see, then stop. The pipeline
+  will ask a human and will not open a PR — do not guess.
 
 ## Issue content
 

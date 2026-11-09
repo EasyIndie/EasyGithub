@@ -63,6 +63,22 @@ export function unstage(cwd: string, paths: string[]): void {
   }
 }
 
+/** Size of the staged diff: files + added/deleted lines (binary files count as 0 lines). */
+export function stagedDiffStats(cwd: string): { files: number; added: number; deleted: number } {
+  const res = git(["diff", "--cached", "--numstat"], cwd);
+  let added = 0;
+  let deleted = 0;
+  let files = 0;
+  for (const line of res.stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const [a, d] = line.split("\t");
+    files++;
+    if (a !== undefined && a !== "-") added += Number(a) || 0;
+    if (d !== undefined && d !== "-") deleted += Number(d) || 0;
+  }
+  return { files, added, deleted };
+}
+
 export function commitStaged(cwd: string, message: string): void {
   git(["commit", "-m", message], cwd);
 }

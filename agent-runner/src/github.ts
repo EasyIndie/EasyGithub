@@ -78,6 +78,11 @@ const LABEL_COLORS: Record<string, string> = {
   "agent:codex": "BFD4F2",
   "ai-core": "5319E7",
   "ai-verify-changed": "FBCA04",
+  "ai-needs-input": "D876E3",
+  "ai-deferred": "EDEDED",
+  "ai-automerge": "2CBE4E",
+  "ai-incident": "B60205",
+  retro: "FBCA04",
 };
 
 /** Create a label if it does not exist (used for zero-config repositories). */
@@ -104,7 +109,10 @@ export function commentFromFile(repo: string, number: number, bodyFile: string):
   gh(["issue", "comment", String(number), "-R", repo, "--body-file", bodyFile]);
 }
 
-export function createPr(repo: string, opts: { base: string; head: string; title: string; bodyFile: string }): PrInfo {
+export function createPr(
+  repo: string,
+  opts: { base: string; head: string; title: string; bodyFile: string; draft?: boolean },
+): PrInfo {
   // PR creation may be blocked for the automatic GITHUB_TOKEN by an org policy
   // ("Allow GitHub Actions to create and approve pull requests"). A personal
   // token (EASYGH_PR_TOKEN) is not subject to that restriction; use it when set.
@@ -112,7 +120,21 @@ export function createPr(repo: string, opts: { base: string; head: string; title
   if (process.env.EASYGH_PR_TOKEN) env.GH_TOKEN = process.env.EASYGH_PR_TOKEN;
   const res = runSync(
     "gh",
-    ["pr", "create", "-R", repo, "--base", opts.base, "--head", opts.head, "--title", opts.title, "--body-file", opts.bodyFile],
+    [
+      "pr",
+      "create",
+      "-R",
+      repo,
+      "--base",
+      opts.base,
+      "--head",
+      opts.head,
+      "--title",
+      opts.title,
+      "--body-file",
+      opts.bodyFile,
+      ...(opts.draft ? ["--draft"] : []),
+    ],
     { env },
   );
   if (res.status === 0) {
@@ -127,6 +149,76 @@ export function createPr(repo: string, opts: { base: string; head: string; title
   const found = list.trim() ? (JSON.parse(list) as PrInfo | null) : null;
   if (found?.number) return found;
   throw new Error(`Failed to create PR for ${opts.head}: ${res.stderr.trim()}`);
+}
+
+// --- delivery helpers -----------------------------------------------------
+
+const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+
+export interface HumanComment {
+  author: string;
+  association: string;
+  body: string;
+  createdAt: string;
+}
+
+/**
+ * Human comments on the issue, newest last.
+ *
+ * Used as the "answer the agent's question" channel (H2): the runner replays
+ * them into TASK.md on the next attempt. Only trusted authors are included —
+ * comments are untrusted input just like the issue body.
+ */
+export function recentHumanComments(repo: string, number: number, limit = 3): HumanComment[] {
+  let data: { comments?: Array<{ author?: { login?: string }; authorAssociation?: string; body?: string; createdAt?: string }> };
+  try {
+    data = JSON.parse(gh(["issue", "view", String(number), "-R", repo, "--json", "comments"])) as typeof data;
+  } catch {
+    return [];
+  }
+  const out: HumanComment[] = [];
+  for (const comment of data.comments ?? []) {
+    const login = comment.author?.login ?? "";
+    const association = comment.authorAssociation ?? "NONE";
+    const body = (comment.body ?? "").trim();
+    if (!body) continue;
+    if (!TRUSTED_ASSOCIATIONS.has(association)) continue;
+    if (login.endsWith("[bot]") || login === "github-actions") continue;
+    if (body.includes("easygh-decision")) continue; // pipeline audit trail
+    out.push({ author: login, association, body: body.slice(0, 2000), createdAt: comment.createdAt ?? "" });
+  }
+  return out.slice(-limit);
+}
+
+/** Arm auto-merge on a PR (the repository must allow auto-merge). */
+export function mergePrAuto(repo: string, prNumber: number): { ok: boolean; detail: string } {
+  const res = runSync("gh", [
+    "pr",
+    "merge",
+    String(prNumber),
+    "-R",
+    repo,
+    "--auto",
+    "--squash",
+    "--delete-branch",
+  ]);
+  return { ok: res.status === 0, detail: (res.stderr || res.stdout).trim().slice(0, 500) };
+}
+
+/** Count `[AI]` pull requests opened in the last `hours` (cost/queue cap). */
+export function countRecentAiPrs(repo: string, hours: number): number {
+  let list: Array<{ title?: string; createdAt?: string }>;
+  try {
+    list = JSON.parse(gh(["pr", "list", "-R", repo, "--state", "all", "--limit", "100", "--json", "title,createdAt"])) as typeof list;
+  } catch {
+    return 0;
+  }
+  const cutoff = Date.now() - hours * 60 * 60 * 1000;
+  return list.filter((pr) => {
+    if (!(pr.title ?? "").startsWith("[AI]")) return false;
+    const ts = Date.parse(pr.createdAt ?? "");
+    return Number.isFinite(ts) && ts >= cutoff;
+  }).length;
 }
 
 // --- claim lock -----------------------------------------------------------

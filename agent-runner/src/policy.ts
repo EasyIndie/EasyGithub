@@ -24,6 +24,8 @@ export interface SecretFinding {
 
 export interface AuditResult {
   ok: boolean;
+  /** every staged path (after vendored/scratch files were dropped) */
+  paths: string[];
   /** staged paths that must not be committed (run fails) */
   blocked: string[];
   /** staged paths that need human review (allowed, flagged) */
@@ -92,7 +94,8 @@ function isIgnored(path: string): boolean {
   return (
     IGNORED_PREFIXES.some((prefix) => p.startsWith(prefix)) ||
     IGNORED_SUFFIXES.some((suffix) => p.endsWith(suffix)) ||
-    p === "TASK.md"
+    p === "TASK.md" ||
+    p === "EASYGH_BLOCKED.md"
   );
 }
 
@@ -150,7 +153,7 @@ export function auditStagedChanges(cwd: string): AuditResult {
   const blocked = staged.filter(isBlocked);
   const sensitive = staged.filter((path) => !isBlocked(path) && isSensitive(path));
   const secrets = scanStagedDiff(cwd);
-  return { ok: blocked.length === 0 && secrets.length === 0, blocked, sensitive, ignored: [], secrets };
+  return { ok: blocked.length === 0 && secrets.length === 0, paths: staged, blocked, sensitive, ignored: [], secrets };
 }
 
 /** Human-readable summary for the issue comment (never includes secret values). */
