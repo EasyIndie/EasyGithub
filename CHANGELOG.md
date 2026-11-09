@@ -9,6 +9,18 @@
 ### Added
 
 - Agent Runner 独立验证与失败自动重试：agent 完成后 runner 会独立运行仓库检查 `npm run check`，失败时把输出反馈给 agent 重试，最多 `AI_MAX_ATTEMPTS`=3 次。
+- 变更审计 `agent-runner/src/policy.ts`：提交前做路径白名单（拒绝 `.github/workflows/**`、`.github/actions/**`、`LICENSE`；标记 `ai-core` 供人工审查）、剔除 vendored/生成目录、扫描新增行中的密钥。
+- Agent 环境白名单 `agent-runner/src/env.ts`：子进程不再继承 `GH_TOKEN` / `GITHUB_TOKEN` / `EASYGH_PR_TOKEN`；git push 凭据在 agent 阶段从工作树移除（内存暂存，推送前恢复）。
+- 原子认领锁 `ai-lock-issue-<n>`（Git Data tag ref CAS），支持按 TTL 回收僵尸运行；`finally` 中统一释放锁与更新标签。
+- 时间预算 `AGENT_BUDGET_MS` / `PI_TIMEOUT_MS` / `VERIFY_TIMEOUT_MS` / `DISPATCH_BUDGET_MS`，超预算时给出明确失败评论而不是被 job timeout 砍断。
+- `review` 任务类型落地：只读，输出 Review 报告作为 Issue 评论，不再产生空改动流水线。
+- 新标签：`ai-core`、`ai-verify-changed`。
+
+### Changed
+
+- 检查命令在 agent 运行前冻结；若检查配置被改动，执行冻结版本并标记 `ai-verify-changed`，不再把"跳过验证"当作"验证通过"。
+- App 轮询模式：`easygh-ai` 标记仅接受 OWNER/MEMBER/COLLABORATOR 作者，防止外部驱动注入。
+- 移除 workflow 中无效的 "Skip already-handled issues" 步骤（步骤内 `exit 0` 并不会跳过后续步骤），去重统一由 runner 负责。
 
 ### Verified
 

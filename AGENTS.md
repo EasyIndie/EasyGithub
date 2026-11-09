@@ -4,7 +4,7 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 
 ## Layout
 
-- `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`; cross-repo dispatcher: `agent-runner/src/dispatcher.ts`.
+- `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`; cross-repo dispatcher: `agent-runner/src/dispatcher.ts`. Guardrails: `src/verify.ts` (frozen gate), `src/policy.ts` (path/secret audit), `src/env.ts` (agent env allow-list).
 - `agent-runner/prompts/` — task templates rendered by the runner (bug-fix / feature / review).
 - `agent-runner/config/agents.json` — agent routing rules.
 - `agent-runner/config/verify.json` — per-repo verification commands for zero-file (App mode) targets; overridable by hub variable `EASYGH_VERIFY_CMDS`.
@@ -21,7 +21,15 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
   (pinned version) on every PR — catches YAML/semantics errors in `*.yml` (an unquoted `: ` in a
   step name once disabled `ghapp-scan`'s triggers, so keep this green).
 - The pipeline independently verifies agent output with `npm run check` before opening a PR
-  (`AI_MAX_ATTEMPTS` controls retries).
+  (`AI_MAX_ATTEMPTS` controls retries). The check command and script body are frozen *before*
+  the agent runs; if the agent edits `package.json`/`Cargo.toml` etc. the frozen version is
+  executed instead and the PR gets `ai-verify-changed`.
+- Staged changes are audited before commit (`src/policy.ts`): `.github/workflows/**`,
+  `.github/actions/**` and `LICENSE` are rejected; `agent-runner/**`, `.github/**` and
+  `scripts/**` are allowed but labelled `ai-core` for human review; added lines are scanned
+  for credential material.
+- The agent never inherits `GH_TOKEN`/`GITHUB_TOKEN`/`EASYGH_PR_TOKEN` (`src/env.ts`), and git
+  push credentials are stripped from the worktree while it runs (`src/git.ts`).
 - There is no automated test suite yet.
 
 ## Working in this repo
@@ -41,4 +49,5 @@ License: Apache-2.0).
 
 ## Labels used by the pipeline
 
-`ai` (trigger), `ai-running`, `ai-pr`, `ai-failed`, `ai-done`. Agent override: `agent:<name>` (pi/claude/codex).
+`ai` (trigger), `ai-running`, `ai-pr`, `ai-failed`, `ai-done`, `ai-core` (touches the runner/CI/installers),
+`ai-verify-changed` (check config edited mid-run). Agent override: `agent:<name>` (pi/claude/codex).

@@ -117,7 +117,8 @@ gh variable set EASYGH_ORG   -R <hub>/<repo> --body "<TargetOrg>"
 ```
 
 ### 4. 触发与验证
-- 给目标仓库任意 Issue 打 `ai` 标签，**或**在标题/正文写 `easygh-ai`
+- 给目标仓库任意 Issue 打 `ai` 标签，**或**以仓库成员/协作者身份在标题/正文写 `easygh-ai`
+  （外部作者的 marker 会被忽略，`ai` 标签仍有效——加标签需要 triage 权限）
 - hub 每 5 分钟轮询；验证：
 ```bash
 gh run list -R <hub>/<repo> --workflow ghapp-scan.yml --limit 3
