@@ -87,8 +87,12 @@ jobs:
             */*) ;;
             *) echo "::error::repo must be owner/name"; exit 1 ;;
           esac
-          echo "repo=${TARGET}" >> "$GITHUB_OUTPUT"
-          echo "org=${TARGET%%/*}" >> "$GITHUB_OUTPUT"
+          ORG="${TARGET%%/*}"
+          {
+            echo "repo=${TARGET}"
+            echo "org=${ORG}"
+            echo "org_key=$(printf '%s' "$ORG" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_' | sed 's/_*$//')"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Authorize actor (hub permissions)
         env:
@@ -103,8 +107,8 @@ jobs:
 
       - name: Mint token for the target organization
         env:
-          EASYGH_APP_ID: ${{ vars.EASYGH_APP_ID }}
-          EASYGH_APP_PRIVATE_KEY: ${{ secrets.EASYGH_APP_PRIVATE_KEY }}
+          EASYGH_APP_ID: ${{ vars[format('EASYGH_APP_ID_{0}', steps.target.outputs.org_key)] || vars.EASYGH_APP_ID }}
+          EASYGH_APP_PRIVATE_KEY: ${{ secrets[format('EASYGH_APP_PRIVATE_KEY_{0}', steps.target.outputs.org_key)] || secrets.EASYGH_APP_PRIVATE_KEY }}
           ORG: ${{ steps.target.outputs.org }}
         run: |
           set -euo pipefail
