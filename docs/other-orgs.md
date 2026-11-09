@@ -169,6 +169,10 @@ gh run view <run-id> -R <hub>/<repo> --log | grep -E "\[dispatch\] (org=|accessi
    > **解法 A（推荐，1 分钟）**：App settings → General → "Where can this GitHub App be installed?"
    > 改成 **Any account** → Save，然后重新打开安装页。
    >
+   > **解法 B 可脚本化**：`node scripts/ghapp-manifest.mjs --org <Org> --out <dir> --open`
+   > 会在本地起回调服务、打开浏览器；你只需点 **Create GitHub App** 和 **Install** 两次。
+   > 结束后 `<dir>/<Org>.pem` 即私钥（0600），用下面的 `gh secret set` 写入后立即删除该文件。
+   >
    > **解法 B（保持私有，每组织独立 App）**：让每个组织拥有自己的 App（owner = 该组织），
    > 装到它自己；然后给 hub 配按组织命名的凭证（大写、非字母数字换成 `_`）：
    > ```bash

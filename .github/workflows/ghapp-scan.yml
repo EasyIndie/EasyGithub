@@ -54,6 +54,7 @@ jobs:
           echo "matrix: ${JSON}"
 
   scan:
+    name: scan (${{ matrix.item.org }})
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 60
