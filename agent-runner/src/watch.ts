@@ -35,6 +35,8 @@ export interface WatchResult {
   repo: string;
   action: "none" | "skipped" | "incident" | "reverted";
   detail: string;
+  /** stale-branch healing attempted during this pass */
+  healing?: { updated: number[]; conflicted: number[] };
 }
 
 const MAX_AGE_DAYS_DEFAULT = 7;
@@ -327,7 +329,13 @@ export function watchRepo(repo: string, opts: { maxAgeDays?: number; dryRun?: bo
 
   const healing = healDirtyAiPrs(repo);
   const note = describeHealing(healing);
-  return note ? { ...result, detail: `${result.detail} · ${note}` } : result;
+  const attempted = healing.updated.length > 0 || healing.conflicted.length > 0;
+  if (!note) return result;
+  return {
+    ...result,
+    detail: `${result.detail} · ${note}`,
+    ...(attempted ? { healing: { updated: healing.updated, conflicted: healing.conflicted } } : {}),
+  };
 }
 
 function watchCore(repo: string, opts: { maxAgeDays?: number; dryRun?: boolean } = {}): WatchResult {
