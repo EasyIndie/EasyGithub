@@ -292,7 +292,9 @@ async function main(): Promise<void> {
       maxRepos: intEnv("MAX_REPOS", 40, 1, 200),
     });
     for (const result of results) {
-      if (result.action === "none") continue;
+      // A healthy repository is only interesting here when the watchdog healed
+      // a stale AI branch during the pass.
+      if (result.action === "none" && !result.healing) continue;
       console.log(`[watch] ${result.repo}: ${result.action} — ${result.detail}`);
     }
     console.log(`[watch] checked ${results.length} repo(s), ${results.filter((r) => r.action === "incident").length} incident(s)`);
