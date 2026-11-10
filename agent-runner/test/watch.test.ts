@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { failingPushRuns, isAiMerge, type RunRow } from "../src/watch.ts";
+import { failingPushRuns, healableAiPrs, isAiMerge, type RunRow } from "../src/watch.ts";
 
 describe("watch: isAiMerge", () => {
   it("detects the squash-merge subject", () => {
@@ -47,5 +47,25 @@ describe("watch: failingPushRuns", () => {
 
   it("ignores repos with no failing run", () => {
     assert.deepEqual(failingPushRuns([run({ conclusion: "success" })], "abc1234"), []);
+  });
+});
+
+describe("stale AI branches", () => {
+  it("selects only pipeline branches that are behind the base", () => {
+    const prs = [
+      { number: 1, headRefName: "ai/issue-10", mergeStateStatus: "DIRTY" },
+      { number: 2, headRefName: "ai/issue-11", mergeStateStatus: "BEHIND" },
+      { number: 3, headRefName: "ai/issue-12", mergeStateStatus: "CLEAN" },
+      { number: 4, headRefName: "feature/human", mergeStateStatus: "DIRTY" },
+      { number: 5, headRefName: "ai/issue-13-looks-close", mergeStateStatus: "DIRTY" },
+    ];
+    assert.deepEqual(
+      healableAiPrs(prs).map((pr) => pr.number),
+      [1, 2],
+    );
+  });
+
+  it("returns nothing to heal when no AI PR is stale", () => {
+    assert.deepEqual(healableAiPrs([{ number: 1, headRefName: "ai/issue-1", mergeStateStatus: "CLEAN" }]), []);
   });
 });

@@ -83,8 +83,58 @@ export function commitStaged(cwd: string, message: string): void {
   git(["commit", "-m", message], cwd);
 }
 
-export function pushBranch(cwd: string, name: string): void {
-  git(["push", "-u", "origin", name], cwd);
+/**
+ * Push the pipeline branch. `force` adds `--force-with-lease`, which a rebase
+ * needs when the branch already exists remotely (a retried run, or a second
+ * push after the base moved). The lease keeps it safe: someone else's commit
+ * on that branch makes the push fail instead of being overwritten.
+ */
+export function pushBranch(cwd: string, name: string, options: { force?: boolean } = {}): void {
+  const args = ["push", "-u", "origin", name];
+  if (options.force) args.push("--force-with-lease");
+  git(args, cwd);
+}
+
+export interface SyncResult {
+  /** false when the rebase hit conflicts (they were aborted) */
+  ok: boolean;
+  /** the branch was moved onto a newer base */
+  changed: boolean;
+  /** conflicted paths, only filled when `ok` is false */
+  conflicts: string[];
+  /** why the sync could not be attempted (fetch failure, etc.) */
+  warning?: string;
+}
+
+/**
+ * Move the current branch onto the latest `origin/<base>` (rebase).
+ *
+ * A PR opened from a stale branch stays `BLOCKED`/`DIRTY` when the base moved
+ * while the agent worked, and two AI PRs touching the same file used to need a
+ * manual `ai-decide -> retry`. Rebasing before the push (and once more when git
+ * rejects the push) keeps the PR mergeable.
+ *
+ * Only safe with a clean worktree: call it after committing.
+ */
+export function syncWithBase(cwd: string, base: string): SyncResult {
+  const fetched = git(["fetch", "--quiet", "origin", base], cwd, true);
+  if (fetched.status !== 0) {
+    return { ok: true, changed: false, conflicts: [], warning: `fetch origin ${base} failed` };
+  }
+
+  const behind = Number(git(["rev-list", "--count", `HEAD..origin/${base}`], cwd).stdout.trim()) || 0;
+  if (behind === 0) return { ok: true, changed: false, conflicts: [] };
+
+  const rebase = git(["rebase", `origin/${base}`], cwd, true);
+  if (rebase.status === 0) return { ok: true, changed: true, conflicts: [] };
+
+  const conflicted = git(["diff", "--name-only", "--diff-filter=U"], cwd, true);
+  const conflicts = conflicted.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  git(["rebase", "--abort"], cwd, true);
+  return { ok: false, changed: false, conflicts };
 }
 
 /**

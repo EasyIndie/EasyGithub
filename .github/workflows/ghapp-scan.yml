@@ -108,6 +108,8 @@ jobs:
           AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
           # Prompt language / variant (profile locale and promptsDir still apply per repo).
           AI_LOCALE: ${{ vars.AI_LOCALE || '' }}
+          EASYGH_PROVIDER: ${{ vars.EASYGH_PROVIDER || '' }}
+          AI_MAX_ATTEMPTS: ${{ vars.AI_MAX_ATTEMPTS || '3' }}
           EASYGH_PROMPTS_DIR: ${{ vars.EASYGH_PROMPTS_DIR || '' }}
           AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
           AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
