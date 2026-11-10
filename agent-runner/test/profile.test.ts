@@ -23,6 +23,16 @@ describe("profile: sanitizeProfile", () => {
     });
   });
 
+  it("keeps a valid locale and prompts dir, drops traversal attempts", () => {
+    const kept = sanitizeProfile({ locale: "zh_CN", promptsDir: "swift/" });
+    assert.equal(kept.locale, "zh-cn");
+    assert.equal(kept.promptsDir, "swift");
+
+    const dropped = sanitizeProfile({ locale: "../../etc", promptsDir: "../secrets" });
+    assert.equal(dropped.locale, undefined);
+    assert.equal(dropped.promptsDir, undefined);
+  });
+
   it("normalises runsOn from a string or a label array", () => {
     assert.deepEqual(sanitizeProfile({ runsOn: "macos-26" }).runsOn, ["macos-26"]);
     assert.deepEqual(sanitizeProfile({ runsOn: ["self-hosted", "macos"] }).runsOn, ["self-hosted", "macos"]);

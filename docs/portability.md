@@ -48,6 +48,8 @@ EasyGithub 的设计目标是**项目无关**：同一套 runner 服务 Node / R
 | `ignoredPaths` | 永不提交（vendored/生成物），即使仓库忘了 .gitignore | `node_modules/`、`dist/`、`build/`、`target/` … |
 | `dependencyFiles` | 改到视为供应链变更 → high | `package.json`、`Cargo.toml`、`go.mod` … |
 | `learningsFile` | 注入 TASK.md 的经验文件 | `docs/learnings.md` |
+| `locale` | 该仓库提示词语言（`AI_LOCALE` 可覆盖） | `en` |
+| `promptsDir` | 该仓库的提示词变体目录（`prompts/<dir>/`） | 共享模板 |
 | `agent` | 默认引擎（标签 `agent:<name>` 仍优先） | `pi` |
 | `model` | 默认模型（`MODEL` 环境变量仍优先） | `deepseek-v4-flash` |
 | `maxAttempts` / `maxPrsPerDay` | 重试次数 / 每日 PR 配额 | 3 / 10 |
@@ -129,6 +131,29 @@ macOS（Xcode）、Windows（MSVC）这类无法用 Linux 容器的项目，可�
 8. `mix.exs` → `mix test`
 9. 都没有 → 跳过（未验证）
 
+### 提示词变体与语言（`promptsDir` / `locale`）
+
+模板放在 `agent-runner/prompts/`，按「最具体优先」解析：
+
+```
+1. <promptsDir>/<locale>/<kind>.md
+2. <promptsDir>/<kind>.md
+3. <locale>/<kind>.md
+4. <kind>.md              # en，始终存在，最终回退
+```
+
+```json
+"OrzMC/OrzMCApp": { "locale": "zh-cn" },
+"Acme/Strict":   { "promptsDir": "strict", "locale": "en" }
+```
+
+- 语言优先级：`AI_LOCALE`（环境/仓库变量）> 画像 `locale` > `en`。
+- 变体目录优先级：`EASYGH_PROMPTS_DIR` > 画像 `promptsDir`。
+- 已内置语言：`en`（根目录）、`zh-cn`（`prompts/zh-cn/`）。
+- 缺什么回退什么：某语言缺某个 kind → 回退英文；不存在的语言直接回退英文。
+- 不合法的 locale/目录（含 `..`、`/`、绝对路径）会被丢弃，不会当成路径用。
+- 新增语言：建 `prompts/<locale>/` 放同名三个文件；测试会校验与英文的 token 集合一致。
+
 ## 4. 平台抽象（provider）
 
 Runner 里所有"平台侧"的调用都收在 `agent-runner/src/providers/`：
@@ -156,6 +181,7 @@ providers/
 [ ] protectedPaths：把"改了必须人看"的目录写进去（CI、发布脚本、签名、生成代码…）
 [ ] dependencyFiles：该项目的依赖清单（lockfile / Package.resolved / go.sum …）
 [ ] macOS/Windows：设置 `runsOn`（需要对应的自托管 runner），否则只能跑 Linux 可用的门禁
+[ ] 非英文项目：设置 `locale`（或仓库变量 `AI_LOCALE`），或新增 `prompts/<locale>/`
 [ ] 目标仓库：allow_auto_merge + 0 批准 + 必需检查（bash scripts/enable-ai-gate.sh）
 [ ] 周报：把仓库加进 EASYGH_RETRO_REPOS
 [ ] 冒烟：一个 docs-only 的 `ai` Issue，确认 PR → auto-merge → Issue 关闭
