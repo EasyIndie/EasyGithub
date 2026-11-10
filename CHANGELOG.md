@@ -71,6 +71,14 @@
 - `ghapp-scan` 增加 `actions: write`（仅用于 dispatch；App token 无法 dispatch hub 工作流）。
 - 无匹配 runner 时任务保持排队（不静默回退 ubuntu），文档给出取消/补 runner 的指引。
 
+### Fixed (retry semantics)
+
+- `ai-decide retry` 之前无效：Issue 重新排队后 dispatcher 仍以"已有 open PR"为由跳过
+  （`skip ... (handled/running/pr open)`），只能手动关 PR。
+- 现在以**标签**为准：有 `ai` 且无 `ai-pr`/`ai-failed`/… 就是要求重跑；重跑删除重名分支
+  （旧 PR 自动关闭），在新基线上重做并开新 PR。新增 `handledByLabels()` + 测试。
+- 看门狗的自愈结果不再被 dispatcher 过滤掉（`action: none` 但有 healing 时也会打印）。
+
 ### Added (self-healing branches)
 
 - 推送前 `git fetch` 基线 + rebase：基线在运行期间前进时不再产出 `DIRTY` PR；rebase 变了就重新验证。
