@@ -43,6 +43,12 @@
 - 看护在读不到 workflow runs（App 缺 `Actions: read`）时显式 `skipped`，不再静默报健康。
 - hub 的 `ai-watch` 改为调用同一个 `watch.ts`（新增 CLI 与 `--dry-run`），与目标仓库共用一套判定逻辑。
 
+### Added (repository permissions)
+
+- `scripts/enable-ai-gate.sh`：给"已有分支保护"的仓库统一配置必需检查 + 0 批准 + admin 应急绕过；
+  已有 ruleset 管检查的仓库不重复叠加，`gh api` 的错误 JSON 不会被当成检查名。
+- 文档补充权限模型：组织默认 `read` + 维护者 `write`，并记录"auto-merge 不认 bypass actor"的实测结论。
+
 ### Changed
 
 - 检查命令在 agent 运行前冻结；若检查配置被改动，执行冻结版本并标记 `ai-verify-changed`，不再把"跳过验证"当作"验证通过"。

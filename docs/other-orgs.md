@@ -225,6 +225,34 @@ gh workflow run ai-decide -R EasyIndie/EasyGithub \
 授权检查针对 **hub** 的协作者（控制平面），动作通过目标组织的 installation token 执行；
 `set-automerge` 需要 `EASYGH_PR_TOKEN`（admin PAT），因为仓库变量 API 不接受 App token。
 
+### 权限模型（防"陌生人无审查合并"）
+
+GitHub 的 `required_approving_review_count` 是**全仓库统一**的，且实测 **auto-merge 不认 ruleset 的
+bypass actor**（`Integration`，`pull_request`/`always` 两种模式都试过，App 的 PR 依然 `REVIEW_REQUIRED`）。
+所以"人类必须审查 + App 零点击"无法用同一个开关实现。做法是**把"谁能合并"交给权限**：
+
+```bash
+# 1) 组织默认权限 read：成员只能读/开 fork PR，没有合并按钮
+gh api -X PATCH orgs/<Org> -f default_repository_permission=read
+
+# 2) 只给维护者写权限（team 或 outside collaborator）
+gh api -X PUT orgs/<Org>/teams/maintainers/repos/<Org>/<repo> -f permission=push
+
+# 3) 有分支保护的仓库统一配成：必需检查 + 0 批准 + admin 可应急绕过
+bash scripts/enable-ai-gate.sh <Org>/<repo> [<Org>/<repo>...] [--contexts "a,b"] --dry-run
+bash scripts/enable-ai-gate.sh <Org>/<repo> [<Org>/<repo>...]
+```
+
+`enable-ai-gate.sh` 的行为：
+- 只处理**已有经典分支保护**的仓库；已有 ruleset 在管检查的仓库不重复叠加。
+- 检查名优先沿用仓库原有的必需检查，其次取最近 PR 上**非 SKIPPED** 的检查，最后取 head 提交的检查。
+- 经典 `required_status_checks` 子接口返回 404（"not enabled"）时，自动改为建 `ai-gate` ruleset。
+- 默认 `strict=false`（避免主干前进后旧 PR 被卡死），可用 `--strict` 打开。
+- 不碰 force-push / 删除保护。
+
+结果：陌生人（无写权限）根本无法合并；App 只对 low 风险 + 冻结检查通过的 PR 开 auto-merge；
+高风险仍是草稿 PR（谁都不能合）。若要"连有写权限的人也必须被审查"，需要额外的自动审批器（方案 B）。
+
 ### 每个目标仓库仍需自己配的合并策略
 
 hub 不能修改别人的仓库设置，所以 auto-merge 开关与分支保护要在目标仓库里配：
