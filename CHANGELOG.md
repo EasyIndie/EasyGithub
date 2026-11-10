@@ -71,6 +71,13 @@
 - `ghapp-scan` 增加 `actions: write`（仅用于 dispatch；App token 无法 dispatch hub 工作流）。
 - 无匹配 runner 时任务保持排队（不静默回退 ubuntu），文档给出取消/补 runner 的指引。
 
+### Added (provider seam)
+
+- `agent-runner/src/providers/`：平台抽象层（`types.ts` 接口 + capabilities、`github.ts` 唯一实现、`index.ts` 注册表）。
+- `main.ts` 所有平台调用改为走 `resolveProvider()`；`EASYGH_PROVIDER` 选择实现，未实现的平台会明确报错，不静默回退。
+- 抽象范围：Issue/标签/评论/PR/auto-merge/认领锁/事故闭锁；GitHub 专属能力（App 发现、workflow dispatch、rulesets）通过 capabilities 标记。
+- 测试：注册表、默认值、环境变量、未实现平台报错、自定义 provider 可注册（63 个用例）。
+
 ### Changed
 
 - 检查命令在 agent 运行前冻结；若检查配置被改动，执行冻结版本并标记 `ai-verify-changed`，不再把"跳过验证"当作"验证通过"。

@@ -129,7 +129,26 @@ macOS（Xcode）、Windows（MSVC）这类无法用 Linux 容器的项目，可�
 8. `mix.exs` → `mix test`
 9. 都没有 → 跳过（未验证）
 
-## 4. 新项目接入清单
+## 4. 平台抽象（provider）
+
+Runner 里所有"平台侧"的调用都收在 `agent-runner/src/providers/`：
+
+```text
+providers/
+  types.ts     # Provider 接口 + capabilities（零文件发现/原子锁/auto-merge/草稿 PR/事故闭锁）
+  github.ts    # 当前唯一实现（gh CLI + tag-ref 锁）
+  index.ts     # 注册表 + resolveProvider()（EASYGH_PROVIDER，默认 github）
+```
+
+- 抽象范围：Issue 读取、标签、评论、可信评论、PR 创建、auto-merge、认领锁、事故闭锁。
+- 仍未抽象（GitHub 专属，通过 capabilities 标记）：App 安装发现、workflow_dispatch、rulesets/分支保护、`ai-watch` 的 run 查询。
+- 选择实现：`EASYGH_PROVIDER=gitlab`（未实现会**明确报错**，不会静默回退到 GitHub）。
+- 新增平台：实现 `Provider` → 在 `providers/index.ts` 注册 → 补上该平台的"发现仓库"机制
+  （GitHub 用 App installation；GitLab 可用 group token + 项目列表）。
+
+> 目前**只实现了 GitHub**。GitLab/Gitea 留作接口，未做实际适配（按当前需求）。
+
+## 5. 新项目接入清单
 
 ```
 [ ] 触发标签 `ai` 已建（App 模式会自动补建）
@@ -142,7 +161,7 @@ macOS（Xcode）、Windows（MSVC）这类无法用 Linux 容器的项目，可�
 [ ] 冒烟：一个 docs-only 的 `ai` Issue，确认 PR → auto-merge → Issue 关闭
 ```
 
-## 5. 典型画像示例
+## 6. 典型画像示例
 
 **Node / TypeScript 库**
 
@@ -185,14 +204,14 @@ macOS（Xcode）、Windows（MSVC）这类无法用 Linux 容器的项目，可�
 }
 ```
 
-## 6. 仍然是"项目相关"的部分（有意保留）
+## 7. 仍然是“项目相关”的部分（有意保留）
 
 - **提示词语气与语言**：`agent-runner/prompts/*.md` 是模板，按需改（属于流水线自身，改它需要走 PR）。
 - **`docs/learnings.md` 的内容**：每个仓库自己积累，流水线不自动写。
 - **标签契约**（`ai`、`ai-*`）：固定，避免每个仓库一套状态机。
 - **周报/评论的语言**：目前中文；需要多语言时再加 `AI_LOCALE`。
 
-## 7. 给 EasyGithub 自己加项目时的心态
+## 8. 给 EasyGithub 自己加项目时的心态
 
 1. 先跑**自动探测**，看它选了什么命令（日志里 `gate frozen: cmd=...`）。
 2. 不可用/太慢 → 写 profile，而不是改 runner 代码。
