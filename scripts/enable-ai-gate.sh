@@ -11,7 +11,8 @@
 #
 # Usage:
 #   bash scripts/enable-ai-gate.sh <owner/repo> [more...] [options]
-#     --contexts "a,b"   explicit check contexts
+#     --contexts "a,b"        explicit check contexts (simple names only)
+#     --contexts-file FILE    explicit check contexts, one per line (matrix names)
 #     --approvals N      required approvals (default 0)
 #     --strict           require branches to be up to date (default off)
 #     --dry-run          print what would change
@@ -25,7 +26,8 @@ DRY=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --contexts) CONTEXTS="${2:-}"; shift 2 ;;
+    --contexts) CONTEXTS="${2:-}"; shift 2 ;;  # comma-separated; matrix names with commas: use --contexts-file
+    --contexts-file) CONTEXTS="$(cat "${2:-}")"; shift 2 ;;
     --approvals) APPROVALS="${2:-0}"; shift 2 ;;
     --strict) STRICT="true"; shift ;;
     --dry-run) DRY=1; shift ;;
@@ -109,7 +111,7 @@ PYEOF
 
 apply_checks() {
   local repo="$1" branch="$2" contexts="$3" json_contexts rs_id body
-  json_contexts=$(printf '%s' "$contexts" | python3 -c 'import json,sys; print(json.dumps([c.strip() for c in sys.stdin.read().split(",") if c.strip()]))')
+  json_contexts=$(printf '%s' "$contexts" | python3 -c 'import json,sys; print(json.dumps([c.strip() for c in sys.stdin.read().splitlines() if c.strip()]))')
 
   if gh api -X PUT "repos/$repo/branches/$branch/protection/required_status_checks" \
       --input - >/dev/null 2>&1 <<JSON
@@ -150,11 +152,11 @@ apply_repo() {
   else
     if [ -z "$contexts" ]; then contexts=$(existing_classic_contexts "$repo" "$branch" || true); fi
     if [ -z "$contexts" ]; then
-      contexts=$(pr_contexts "$repo" | grep -Ev "$NOISE" | sort -u | paste -sd, - || true)
+      contexts=$(pr_contexts "$repo" | grep -Ev "$NOISE" | sort -u | paste -sd '\n' - || true)
       valid_contexts "$contexts" || contexts=""
     fi
     if [ -z "$contexts" ]; then
-      contexts=$(head_contexts "$repo" "$branch" | grep -Ev "$NOISE" | sort -u | paste -sd, - || true)
+      contexts=$(head_contexts "$repo" "$branch" | grep -Ev "$NOISE" | sort -u | paste -sd '\n' - || true)
       valid_contexts "$contexts" || contexts=""
     fi
     if [ -n "$contexts" ]; then
