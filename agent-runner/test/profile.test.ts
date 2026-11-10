@@ -7,6 +7,7 @@ describe("profile: sanitizeProfile", () => {
     const cleaned = sanitizeProfile({
       verify: ["npm test", "  ", ""],
       model: " deepseek-v4-pro ",
+      verifyContainer: " swift:6.0 ",
       maxAttempts: 2,
       protectedPaths: ["src/generated/"],
       unknownKey: "ignored",
@@ -16,6 +17,7 @@ describe("profile: sanitizeProfile", () => {
     assert.deepEqual(cleaned, {
       verify: ["npm test"],
       model: "deepseek-v4-pro",
+      verifyContainer: "swift:6.0",
       maxAttempts: 2,
       protectedPaths: ["src/generated/"],
     });

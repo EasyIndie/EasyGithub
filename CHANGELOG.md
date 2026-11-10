@@ -57,6 +57,12 @@
 - 新增 `docs/portability.md`：通用化手册、字段与优先级、验证命令的运行环境约束、新项目接入清单。
 - OrzMCApp（Swift）画像落地：Ubuntu 可跑的 `check-platform-split.sh` + Swift 目录的受保护路径 + 经验文件指向 `docs/iteration-flow.md`。
 
+### Added (verifyContainer)
+
+- 仓库画像支持 `verifyContainer`：验证命令在指定 Docker 镜像内执行（Swift / .NET / 特定 JDK 等
+  宿主没有的工具链），工作区挂载到 `/work`；容器模式下不在宿主预装依赖；Docker 不可用时明确失败。
+- 验证闸门同时冻结 `verifyContainer` 与命令引用脚本的内容哈希。
+
 ### Changed
 
 - 检查命令在 agent 运行前冻结；若检查配置被改动，执行冻结版本并标记 `ai-verify-changed`，不再把"跳过验证"当作"验证通过"。
