@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runAsync } from "./util/exec.ts";
+import { runAsync, runSync } from "./util/exec.ts";
 import { verifyCommandFromProfile, type RepoProfile } from "./profile.ts";
 
 /**
@@ -31,6 +31,8 @@ export interface VerifySpec {
   fingerprint: string;
   /** Content hash of scripts the command invokes (e.g. `bash scripts/check.sh`). */
   gateFiles?: Record<string, string>;
+  /** Docker image the verification must run in (profile `verifyContainer`). */
+  container?: string;
 }
 
 export interface VerifyResult {
@@ -156,12 +158,45 @@ function hashedFiles(workDir: string, command: string | null): Record<string, st
 export async function captureVerifySpec(workDir: string, profile?: RepoProfile): Promise<VerifySpec> {
   const gate = await resolveGate(workDir, profile);
   const gateFiles = hashedFiles(workDir, gate.command);
+  const container = profile?.verifyContainer;
   return {
     command: gate.command,
     scriptBody: gate.scriptBody,
-    fingerprint: `${await gateFingerprint(workDir, gate.command)}|scripts:${JSON.stringify(gateFiles)}`,
+    fingerprint: `${await gateFingerprint(workDir, gate.command)}|scripts:${JSON.stringify(gateFiles)}|container:${container ?? ""}`,
     gateFiles,
+    ...(container ? { container } : {}),
   };
+}
+
+export interface VerifyInvocation {
+  binary: string;
+  args: string[];
+  /** human-readable form for logs / failure comments */
+  display: string;
+}
+
+function hasBinary(name: string): boolean {
+  return runSync("bash", ["-c", `command -v ${name}`]).status === 0;
+}
+
+/**
+ * How the frozen gate is executed.
+ *
+ * A profile can pin a Docker image for toolchains that the runner does not
+ * have (Swift, .NET, a specific JDK, …). The worktree is mounted read-write so
+ * dependency managers can write caches into it.
+ */
+export function buildVerifyInvocation(spec: VerifySpec, tampered: boolean, workDir: string): VerifyInvocation {
+  const body =
+    tampered && spec.scriptBody ? `export PATH="$PWD/node_modules/.bin:$PATH"; ${spec.scriptBody}` : (spec.command ?? "");
+  if (spec.container) {
+    return {
+      binary: "docker",
+      args: ["run", "--rm", "-v", `${workDir}:/work`, "-w", "/work", "--entrypoint", "bash", spec.container, "-c", body],
+      display: `docker run --rm -v ${workDir}:/work -w /work --entrypoint bash ${spec.container} -c ${JSON.stringify(body)}`,
+    };
+  }
+  return { binary: "bash", args: ["-c", body], display: body };
 }
 
 async function ensureDeps(workDir: string, timeoutMs: number): Promise<{ command: string | null; output: string; ok: boolean }> {
@@ -205,10 +240,26 @@ export async function runVerify(
   }
 
   const budgetMs = clampTimeout(timeoutMs);
-  const fingerprintNow = `${await gateFingerprint(workDir, spec.command)}|scripts:${JSON.stringify(hashedFiles(workDir, spec.command))}`;
+  const fingerprintNow = `${await gateFingerprint(workDir, spec.command)}|scripts:${JSON.stringify(hashedFiles(workDir, spec.command))}|container:${spec.container ?? ""}`;
   const tampered = fingerprintNow !== spec.fingerprint;
 
-  const deps = await ensureDeps(workDir, budgetMs);
+  if (spec.container && !hasBinary("docker")) {
+    return {
+      ok: false,
+      skipped: false,
+      verified: false,
+      tampered,
+      command: spec.command,
+      output: `verifyContainer is set (${spec.container}) but docker is not available on this runner`,
+      timedOut: false,
+    };
+  }
+
+  // In a container the image owns the toolchain; installing npm deps on the
+  // host first would be wrong (binaries may not match).
+  const deps = spec.container
+    ? { command: null as string | null, output: "", ok: true }
+    : await ensureDeps(workDir, budgetMs);
   if (!deps.ok) {
     return {
       ok: false,
@@ -223,15 +274,13 @@ export async function runVerify(
 
   // Trusted target: normally the frozen command. If the gate was modified, run
   // the script body captured before the agent ran (npm's local bin on PATH).
-  const runBody = tampered && spec.scriptBody !== null;
-  const target = runBody ? spec.scriptBody as string : spec.command;
-  const shellCommand = runBody ? `export PATH="$PWD/node_modules/.bin:$PATH"; ${target}` : target;
+  const invocation = buildVerifyInvocation(spec, tampered, workDir);
 
   let output = deps.output ? `$ ${deps.command}\n${deps.output}\n` : "";
-  output += `$ ${runBody ? `(frozen) ${target}` : target}\n`;
+  output += `$ ${invocation.display}\n`;
   if (tampered) output += "(gate configuration changed during the run; executing the frozen version)\n";
 
-  const res = await runAsync("bash", ["-c", shellCommand], {
+  const res = await runAsync(invocation.binary, invocation.args, {
     cwd: workDir,
     timeoutMs: budgetMs,
     onStdout: (s) => (output += s),

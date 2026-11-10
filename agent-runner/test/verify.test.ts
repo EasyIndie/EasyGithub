@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { captureVerifySpec, runVerify } from "../src/verify.ts";
+import { buildVerifyInvocation, captureVerifySpec, runVerify } from "../src/verify.ts";
 
 let dir = "";
 const savedVerifyCmd = process.env.VERIFY_CMD;
@@ -12,6 +12,32 @@ const savedVerifyTimeout = process.env.VERIFY_TIMEOUT_MS;
 function writePackage(scripts: Record<string, string>): void {
   writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "fixture", scripts }, null, 2));
 }
+
+describe("verify invocation", () => {
+  it("runs on the host by default", () => {
+    const inv = buildVerifyInvocation({ command: "npm test", scriptBody: null, fingerprint: "" }, false, "/w");
+    assert.equal(inv.binary, "bash");
+    assert.deepEqual(inv.args, ["-c", "npm test"]);
+  });
+
+  it("uses docker when the profile pins an image", () => {
+    const inv = buildVerifyInvocation(
+      { command: "swift test", scriptBody: null, fingerprint: "", container: "swift:6.0" },
+      false,
+      "/w",
+    );
+    assert.equal(inv.binary, "docker");
+    assert.ok(inv.args.includes("swift:6.0"));
+    assert.ok(inv.args.includes("/w:/work"));
+    assert.ok(inv.args.includes("/work"));
+  });
+
+  it("runs the frozen npm script body when the gate was tampered", () => {
+    const inv = buildVerifyInvocation({ command: "npm run check", scriptBody: "tsc --noEmit", fingerprint: "" }, true, "/w");
+    assert.match(String(inv.args[1]), /tsc --noEmit/);
+    assert.match(String(inv.args[1]), /node_modules\/\.bin/);
+  });
+});
 
 describe("verify gate", () => {
   beforeEach(() => {
@@ -82,6 +108,12 @@ describe("verify gate", () => {
     writeFileSync(join(dir, "Package.swift"), "// swift\n");
     const spec = await captureVerifySpec(dir);
     assert.equal(spec.command, "swift test");
+  });
+
+  it("captures the container image into the spec", async () => {
+    const spec = await captureVerifySpec(dir, { verify: ["true"], verifyContainer: "alpine:3" });
+    assert.equal(spec.command, "true");
+    assert.equal(spec.container, "alpine:3");
   });
 
   it("detects a weakened verification script (self-reference hole)", async () => {

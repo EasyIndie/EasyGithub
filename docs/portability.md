@@ -40,6 +40,7 @@ EasyGithub 的设计目标是**项目无关**：同一套 runner 服务 Node / R
 |---|---|---|
 | `verify` | 验证命令数组，按顺序用 ` && ` 连接；**在 agent 启动前冻结** | 自动探测 |
 | `verifyTimeoutMs` | 单次验证超时 | 600000（10 分钟） |
+| `verifyContainer` | 在指定 Docker 镜像里执行验证（Swift/.NET/特定 JDK…） | 宿主直接执行 |
 | `protectedPaths` / `protectedFiles` | 改到这些路径 → **high 风险**（草稿 PR + code owner） | `.github/`、`agent-runner/`、`scripts/`、`eval/`、`LICENSE` |
 | `blockedPaths` / `blockedFiles` | 直接拒绝提交（运行失败） | `.github/workflows/`、`.github/actions/`、`LICENSE` |
 | `sensitivePaths` / `sensitiveFiles` | 允许提交但打 `ai-core` 标签，必须人工审查 | `agent-runner/`、`.github/`、`scripts/`、`package.json` |
@@ -71,6 +72,24 @@ EasyGithub 的设计目标是**项目无关**：同一套 runner 服务 Node / R
   重量级构建交给目标仓库自己的 CI（作为非必需检查）。
 - 需要私有依赖/密钥的构建 → 在 hub 加 secret，或把命令收窄到静态检查。
 - 没有可跑的检查时，结果会被标记为**未验证**（high 风险 → 草稿 PR），不会被当成"通过"。
+
+### 容器化验证（`verifyContainer`）
+
+宿主 runner 没有的工具链（Swift、.NET、特定 JDK、Flutter…）可以用镜像补齐：
+
+```json
+"org/app": { "verify": ["swift test"], "verifyContainer": "swift:6.0" }
+```
+
+实际执行：`docker run --rm -v <worktree>:/work -w /work --entrypoint bash <image> -c "<cmd>"`。
+
+- 镜像必须自带 `bash` 与工具链；工作区可写（依赖缓存会写进去）。
+- 容器模式下**不会**在宿主预装 npm 依赖（避免二进制不匹配），依赖由镜像/命令负责。
+- 每次运行都会拉镜像（hosted runner 是临时的）；大镜像更慢，按需开启。
+- Docker 不可用时**明确失败**（不会假装"已验证"）。
+- **Agent 仍在宿主执行**，容器只负责"裁判"这一段。若 agent 必须编译才能推理，走 Mode 1/2 + 自托管 runner。
+- macOS/Xcode 没有官方镜像 → 用 Mode 1/2 的 caller workflow 指定自托管 `runs-on: macos-*`，
+  或像 OrzMCApp 那样给一个 Ubuntu 可跑的轻量门禁（`check-platform-split.sh`）。
 
 ### 自动探测顺序（没有 profile 时）
 

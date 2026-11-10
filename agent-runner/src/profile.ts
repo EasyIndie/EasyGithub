@@ -21,6 +21,8 @@ export interface RepoProfile {
   /** verification commands, run in order joined by ` && ` */
   verify?: string[];
   verifyTimeoutMs?: number;
+  /** Docker image used to run verification (e.g. "swift:6.0", "mcr.microsoft.com/dotnet/sdk:8.0") */
+  verifyContainer?: string;
   /** path prefixes that make a change high-risk (draft PR + code owner) */
   protectedPaths?: string[];
   protectedFiles?: string[];
@@ -85,7 +87,7 @@ const LIST_KEYS = [
   "ignoredPaths",
   "dependencyFiles",
 ] as const;
-const STRING_KEYS = ["learningsFile", "agent", "model"] as const;
+const STRING_KEYS = ["learningsFile", "agent", "model", "verifyContainer"] as const;
 const NUMBER_KEYS = ["verifyTimeoutMs", "maxAttempts", "maxPrsPerDay"] as const;
 
 /** Drop unknown keys / wrong types so a typo cannot silently misconfigure a repo. */
