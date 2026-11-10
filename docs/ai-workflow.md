@@ -204,7 +204,10 @@ gh api -X PATCH repos/EasyIndie/EasyGithub/branches/main/protection/required_pul
 1. **推送前**：`git fetch` 基线 → `rebase` → 真的变了就**重新验证**再推；
 2. **推送被拒**（竞态）：自动再 rebase 一次并重试一次；
 3. **开 PR 之后**：`ai-watch` 对 `DIRTY`/`BEHIND` 的 `ai/issue-*` 分支调用 GitHub 的
-   "Update branch"（合并基线进分支），真冲突才交给人。
+   "Update branch"（合并基线进分支）；真冲突时调度日志写 `conflicts #N`，交给 `retry`。
+
+`retry` 的语义是"重新排队"，由标签决定（`ai` 在、`ai-pr` 等不在），**不看**是否还有旧 PR：
+重跑会删除重名分支（旧 PR 随之关闭）、在新基线上重做、开新 PR。
 
 rebase 会改写已推送的提交，所以推送用 `--force-with-lease`：只覆盖自己的分支，
 别人往同一分支推过东西就会失败而不是被覆盖。

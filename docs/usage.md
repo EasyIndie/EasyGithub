@@ -129,7 +129,7 @@ gh workflow run ai-decide.yml -R EasyIndie/EasyGithub \
 
 | 动作 | 什么时候用 |
 |---|---|
-| `retry` | `ai-failed`、`ai-deferred`、分支冲突、想换基线上重来 |
+| `retry` | `ai-failed`、`ai-deferred`、`CONFLICTING` 的 PR、想换基线上重来（会删分支、重跑、旧 PR 自动关闭） |
 | `answer` | `ai-needs-input`：agent 抛出的问题你已经有结论了 |
 | `cancel` | 卡住/不想要了；同时释放锁，避免 `ai-running` 挂着 |
 | `waive` | 需要留下"人已复核"的痕迹（不会绕过路径/密钥检查） |
@@ -208,7 +208,8 @@ Secrets：`DEEPSEEK_API_KEY`（模型）、`EASYGH_APP_PRIVATE_KEY[_<ORG>]`（Ap
 | `ai-deferred` | 当日 PR 配额用尽 | 等配额恢复，或调 `AI_MAX_PRS_PER_DAY` 后 `retry` |
 | `ai-needs-input` | agent 明确要人做决定 | 用 `answer` 回复，或直接 `retry` 并改 Issue |
 | PR 一直 `BLOCKED` | 缺少必需检查 / 分支落后 | 现在会自动 rebase；仍不行看 §9 |
-| 两个 AI PR 改同一文件 | 后者分支过期 | **已自愈**：看门狗会调 GitHub "Update branch" 重放；真冲突会提示 |
+| 两个 AI PR 改同一文件 | 后者分支过期 | **多数自愈**：看门狗调 GitHub "Update branch" 重放；日志会写 `updated #N` / `conflicts #N` |
+| PR 显示 `CONFLICTING` | 两边改了同一行（真冲突） | `retry`：在新基线上重做，旧 PR 自动关闭，新 PR 重新开 |
 | 任务一直排队 | `runsOn` 没有匹配的 runner | 检查自托管 runner 的标签与在线状态 |
 | 什么标签都没加 | 触发条件没满足 | 确认 Issue 上有 `ai` 标签（不是标题关键词） |
 | `incident` 不自动合并 | 上次 AI 合并把 main 弄坏了 | 处理事故 Issue → 关闭 → 自动合并恢复 |
@@ -220,7 +221,11 @@ Secrets：`DEEPSEEK_API_KEY`（模型）、`EASYGH_APP_PRIVATE_KEY[_<ORG>]`（Ap
 - **开 PR 前**：runner 会 `fetch` 基线并 rebase；若基线在你跑的过程中前进过，rebase 后会**重新验证**再推送。
 - **推送被拒**（极小竞态）：自动 rebase 一次并重试。
 - **开 PR 后**：`ai-watch` 会把 `DIRTY`/`BEHIND` 的 `ai/issue-*` 分支自动"Update branch"。
-- **真冲突**（两边改同一行）：rebase 会 abort，Issue 打 `ai-needs-input` 并列出冲突文件 → `retry`（在最新基线上重做，通常冲突就没了）或人工解决。
+- **真冲突**（两边改同一行）：rebase 会 abort，Issue 打 `ai-needs-input` 并列出冲突文件 → `retry`
+  （在新基线上从头重做，旧 PR 随分支删除自动关闭、新 PR 重新开），或人工解决。
+
+> `retry` 之后 dispatcher **不会**因为"还有旧 PR 开着"而跳过——重新排队以标签为准
+> （有 `ai` 且没有 `ai-pr`/`ai-failed` 等就是"请重跑"）。
 
 ---
 
