@@ -26,7 +26,7 @@ const configUrl = new URL("../config/agents.json", import.meta.url);
  *   3. first matching rule in agent-runner/config/agents.json
  *   4. configured default ("pi")
  */
-export async function routeAgent(input: RouteInput): Promise<string> {
+export async function routeAgent(input: RouteInput, fallbackAgent?: string): Promise<string> {
   for (const label of input.labels) {
     const m = /^agent:(.+)$/.exec(label.trim());
     if (m?.[1]) return m[1].trim().toLowerCase();
@@ -53,5 +53,5 @@ export async function routeAgent(input: RouteInput): Promise<string> {
     if (labelsOk || titleOk) return rule.agent.trim().toLowerCase();
   }
 
-  return (cfg.default ?? "pi").trim().toLowerCase() || "pi";
+  return (fallbackAgent ?? cfg.default ?? "pi").trim().toLowerCase() || "pi";
 }

@@ -39,6 +39,9 @@ export interface AuditResult {
 const BLOCKED_PREFIXES = [".git/", ".github/workflows/", ".github/actions/"];
 const BLOCKED_FILES = ["LICENSE", "LICENCE", "TASK.md"];
 
+/** Always rejected, even when a repository profile narrows the lists. */
+const BASELINE_BLOCKED_PREFIXES = [".git/", ".github/workflows/", ".github/actions/"];
+
 /** Allowed, but flagged for mandatory human review. */
 const SENSITIVE_PREFIXES = ["agent-runner/", ".github/", "scripts/"];
 const SENSITIVE_FILES = ["package.json", "package-lock.json", "tsconfig.json"];
@@ -79,20 +82,33 @@ function normalize(path: string): string {
   return path.replace(/^\.\//, "");
 }
 
-function isBlocked(path: string): boolean {
-  const p = normalize(path);
-  return BLOCKED_FILES.includes(p) || BLOCKED_PREFIXES.some((prefix) => p.startsWith(prefix));
+interface PathRules {
+  blockedPaths?: string[];
+  blockedFiles?: string[];
+  sensitivePaths?: string[];
+  sensitiveFiles?: string[];
+  ignoredPaths?: string[];
 }
 
-function isSensitive(path: string): boolean {
+function isBlocked(path: string, rules: PathRules = {}): boolean {
   const p = normalize(path);
-  return SENSITIVE_FILES.includes(p) || SENSITIVE_PREFIXES.some((prefix) => p.startsWith(prefix));
+  const prefixes = [...BASELINE_BLOCKED_PREFIXES, ...(rules.blockedPaths ?? BLOCKED_PREFIXES)];
+  const files = [...BLOCKED_FILES, ...(rules.blockedFiles ?? [])];
+  return files.includes(p) || prefixes.some((prefix) => p.startsWith(prefix));
 }
 
-function isIgnored(path: string): boolean {
+function isSensitive(path: string, rules: PathRules = {}): boolean {
   const p = normalize(path);
+  const files = [...SENSITIVE_FILES, ...(rules.sensitiveFiles ?? [])];
+  const prefixes = [...SENSITIVE_PREFIXES, ...(rules.sensitivePaths ?? [])];
+  return files.includes(p) || prefixes.some((prefix) => p.startsWith(prefix));
+}
+
+function isIgnored(path: string, rules: PathRules = {}): boolean {
+  const p = normalize(path);
+  const ignored = [...IGNORED_PREFIXES, ...(rules.ignoredPaths ?? [])];
   return (
-    IGNORED_PREFIXES.some((prefix) => p.startsWith(prefix)) ||
+    ignored.some((prefix) => p.startsWith(prefix)) ||
     IGNORED_SUFFIXES.some((suffix) => p.endsWith(suffix)) ||
     p === "TASK.md" ||
     p === "EASYGH_BLOCKED.md"
@@ -103,10 +119,10 @@ function isIgnored(path: string): boolean {
  * Stage the working tree for commit, then unstage everything the pipeline
  * refuses to ship (vendored trees, logs, scratch task files).
  */
-export function stageChanges(cwd: string): { ignored: string[] } {
+export function stageChanges(cwd: string, rules: PathRules = {}): { ignored: string[] } {
   stageAll(cwd);
   const staged = stagedPaths(cwd);
-  const ignored = staged.filter(isIgnored);
+  const ignored = staged.filter((path) => isIgnored(path, rules));
   if (ignored.length > 0) unstage(cwd, ignored);
   return { ignored };
 }
@@ -148,10 +164,10 @@ export function scanStagedDiff(cwd: string): SecretFinding[] {
 }
 
 /** Inspect the staged change set before committing. */
-export function auditStagedChanges(cwd: string): AuditResult {
+export function auditStagedChanges(cwd: string, rules: PathRules = {}): AuditResult {
   const staged = stagedPaths(cwd);
-  const blocked = staged.filter(isBlocked);
-  const sensitive = staged.filter((path) => !isBlocked(path) && isSensitive(path));
+  const blocked = staged.filter((path) => isBlocked(path, rules));
+  const sensitive = staged.filter((path) => !isBlocked(path, rules) && isSensitive(path, rules));
   const secrets = scanStagedDiff(cwd);
   return { ok: blocked.length === 0 && secrets.length === 0, paths: staged, blocked, sensitive, ignored: [], secrets };
 }

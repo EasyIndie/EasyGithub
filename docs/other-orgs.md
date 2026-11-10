@@ -97,7 +97,8 @@ Fork `EasyIndie/EasyGithub`，或 `git clone` 后推到自己的组织（public 
 > **验证命令（零文件目标）**：因为目标仓库没有自己的 variables，App 模式从 **hub** 取验证配置：
 > 提交在 `agent-runner/config/verify.json`（如 `{"Org/repo":{"cmd":"cargo test","timeout_ms":900000}}`），
 > 或用 hub variable `EASYGH_VERIFY_CMDS`（同结构，优先级更高）。
-> 未配置时自动检测：`package.json` 脚本 → `cargo test` → `go test ./...` → 跳过。
+> 未配置时自动检测：`package.json` 脚本 → `cargo test` → `go test ./...` → `swift test` → 其它（见 `docs/portability.md`）→ 跳过。
+> 推荐把长期配置写进 `agent-runner/config/repos.json`（可 review），`EASYGH_VERIFY_CMDS` 仅作临时覆盖。
 > Mode 2 则在**目标仓库**设 `VERIFY_CMD`（caller 已接好 `vars.VERIFY_CMD`）。
 >
 > **调优（实测数据，EasyBot Rust workspace）**：一次真实运行中 `cargo test` 耗时

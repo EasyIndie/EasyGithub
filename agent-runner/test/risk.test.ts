@@ -33,6 +33,18 @@ describe("assessRisk", () => {
     assert.deepEqual(risk.reasons, ["small, verified, non-protected change"]);
   });
 
+  it("honours repository-specific protected paths and keeps the baseline", () => {
+    const config = { protectedPaths: ["Sources/", "OrzMC.xcodeproj/"], dependencyFiles: ["Package.swift"] };
+    const sources = assessRisk({ paths: ["Sources/App.swift"], changedLines: 5, verify: verified, ...config });
+    assert.equal(sources.level, "high");
+    const manifest = assessRisk({ paths: ["Package.swift"], changedLines: 1, verify: verified, ...config });
+    assert.equal(manifest.level, "high");
+    const workflows = assessRisk({ paths: [".github/workflows/ci.yml"], changedLines: 1, verify: verified, ...config });
+    assert.equal(workflows.level, "high", "baseline paths stay protected");
+    const readme = assessRisk({ paths: ["README.md"], changedLines: 5, verify: verified, ...config });
+    assert.equal(readme.level, "low");
+  });
+
   it("uses medium for bigger diffs", () => {
     const risk = assessRisk({ paths: ["src/a.ts"], changedLines: 250, verify: verified });
     assert.equal(risk.level, "medium");

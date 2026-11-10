@@ -49,6 +49,14 @@
   已有 ruleset 管检查的仓库不重复叠加，`gh api` 的错误 JSON 不会被当成检查名。
 - 文档补充权限模型：组织默认 `read` + 维护者 `write`，并记录"auto-merge 不认 bypass actor"的实测结论。
 
+### Added (portability)
+
+- 仓库画像 `agent-runner/src/profile.ts` + `config/repos.json`：按仓库配置验证命令、受保护/禁止/敏感/忽略路径、
+  依赖清单、经验文件、默认 agent/model、重试与配额；默认行为不变（不配置就走自动探测）。
+- 自动探测新增 Swift（`Package.swift`）、Gradle（`gradlew`）、Maven（`pom.xml`）、Elixir（`mix.exs`）。
+- 新增 `docs/portability.md`：通用化手册、字段与优先级、验证命令的运行环境约束、新项目接入清单。
+- OrzMCApp（Swift）画像落地：Ubuntu 可跑的 `check-platform-split.sh` + Swift 目录的受保护路径 + 经验文件指向 `docs/iteration-flow.md`。
+
 ### Changed
 
 - 检查命令在 agent 运行前冻结；若检查配置被改动，执行冻结版本并标记 `ai-verify-changed`，不再把"跳过验证"当作"验证通过"。
