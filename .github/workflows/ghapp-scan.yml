@@ -26,6 +26,8 @@ on:
 
 permissions:
   contents: read
+  # Dispatch ai-run.yml for repositories whose profile pins a runner.
+  actions: write
 
 concurrency:
   group: ghapp-scan
@@ -91,6 +93,8 @@ jobs:
         if: steps.mint.outcome == 'success'
         env:
           GH_TOKEN: ${{ steps.mint.outputs.token }}
+          # Used only to dispatch ai-run.yml (the App token cannot dispatch hub workflows).
+          GITHUB_TOKEN: ${{ github.token }}
           ORG: ${{ matrix.item.org }}
           REPO_FILTER: ${{ vars.EASYGH_REPO_FILTER }}
           MAX_ISSUES: ${{ vars.EASYGH_MAX_ISSUES || '4' }}

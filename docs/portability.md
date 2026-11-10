@@ -41,6 +41,7 @@ EasyGithub 的设计目标是**项目无关**：同一套 runner 服务 Node / R
 | `verify` | 验证命令数组，按顺序用 ` && ` 连接；**在 agent 启动前冻结** | 自动探测 |
 | `verifyTimeoutMs` | 单次验证超时 | 600000（10 分钟） |
 | `verifyContainer` | 在指定 Docker 镜像里执行验证（Swift/.NET/特定 JDK…） | 宿主直接执行 |
+| `runsOn` | 该仓库的任务交给这些 runner label（自托管 macOS/Windows 也行） | hub 的 `ubuntu-latest` |
 | `protectedPaths` / `protectedFiles` | 改到这些路径 → **high 风险**（草稿 PR + code owner） | `.github/`、`agent-runner/`、`scripts/`、`eval/`、`LICENSE` |
 | `blockedPaths` / `blockedFiles` | 直接拒绝提交（运行失败） | `.github/workflows/`、`.github/actions/`、`LICENSE` |
 | `sensitivePaths` / `sensitiveFiles` | 允许提交但打 `ai-core` 标签，必须人工审查 | `agent-runner/`、`.github/`、`scripts/`、`package.json` |
@@ -72,6 +73,31 @@ EasyGithub 的设计目标是**项目无关**：同一套 runner 服务 Node / R
   重量级构建交给目标仓库自己的 CI（作为非必需检查）。
 - 需要私有依赖/密钥的构建 → 在 hub 加 secret，或把命令收窄到静态检查。
 - 没有可跑的检查时，结果会被标记为**未验证**（high 风险 → 草稿 PR），不会被当成"通过"。
+
+### 自托管 / 指定 runner（`runsOn`）
+
+macOS（Xcode）、Windows（MSVC）这类无法用 Linux 容器的项目，可以指定 runner：
+
+```json
+"Org/iOSApp": {
+  "runsOn": ["self-hosted", "macos", "xcode-26"],
+  "verify": ["xcodebuild -scheme OrzMC -destination 'platform=iOS Simulator,name=iPhone 17' test"]
+}
+```
+
+工作方式（仅 App / 零文件模式）：
+
+1. `ghapp-scan` 发现该仓库的 Issue 后**不在 hub 上跑**，而是 `workflow_dispatch` 一个
+   `ai-run.yml`，把 `repo` / `issue` / `runs_on`（JSON 数组）传过去（用 hub 自己的 `GITHUB_TOKEN`；
+   需要工作流有 `actions: write`，已配置）。
+2. `ai-run.yml` 在 `runs-on: fromJSON(runs_on)` 上启动，签发目标组织的 installation token、
+   克隆目标仓库到 `$RUNNER_TEMP`，再跑标准 runner。
+3. 没有匹配 label 的 runner 时，任务会**一直排队**（这是有意的：静默退回 ubuntu 会给出不可信的验证结果）。
+   取消排队或补 runner 即可。
+
+- 自托管 runner 需要：`node >= 22`（`setup-node` 会自动装）、`git`、`gh`；容器验证还需要 Docker。
+- `runsOn` 与 `verifyContainer` 可以并用（容器只在 Linux runner 上有意义）。
+- Mode 1/2（目标仓库自己的 workflow）不需要 `runsOn`：直接在 caller workflow 里写 `runs-on:` 即可。
 
 ### 容器化验证（`verifyContainer`）
 
@@ -110,6 +136,7 @@ EasyGithub 的设计目标是**项目无关**：同一套 runner 服务 Node / R
 [ ] 仓库画像：config/repos.json 加一条（verify 必填；否则走自动探测）
 [ ] protectedPaths：把"改了必须人看"的目录写进去（CI、发布脚本、签名、生成代码…）
 [ ] dependencyFiles：该项目的依赖清单（lockfile / Package.resolved / go.sum …）
+[ ] macOS/Windows：设置 `runsOn`（需要对应的自托管 runner），否则只能跑 Linux 可用的门禁
 [ ] 目标仓库：allow_auto_merge + 0 批准 + 必需检查（bash scripts/enable-ai-gate.sh）
 [ ] 周报：把仓库加进 EASYGH_RETRO_REPOS
 [ ] 冒烟：一个 docs-only 的 `ai` Issue，确认 PR → auto-merge → Issue 关闭

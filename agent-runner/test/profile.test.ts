@@ -23,6 +23,13 @@ describe("profile: sanitizeProfile", () => {
     });
   });
 
+  it("normalises runsOn from a string or a label array", () => {
+    assert.deepEqual(sanitizeProfile({ runsOn: "macos-26" }).runsOn, ["macos-26"]);
+    assert.deepEqual(sanitizeProfile({ runsOn: ["self-hosted", "macos"] }).runsOn, ["self-hosted", "macos"]);
+    assert.equal(sanitizeProfile({ runsOn: ["", "  "] }).runsOn, undefined);
+    assert.equal(sanitizeProfile({ runsOn: 42 }).runsOn, undefined);
+  });
+
   it("returns {} for junk", () => {
     assert.deepEqual(sanitizeProfile(null), {});
     assert.deepEqual(sanitizeProfile("x"), {});

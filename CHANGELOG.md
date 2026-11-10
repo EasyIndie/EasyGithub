@@ -63,6 +63,14 @@
   宿主没有的工具链），工作区挂载到 `/work`；容器模式下不在宿主预装依赖；Docker 不可用时明确失败。
 - 验证闸门同时冻结 `verifyContainer` 与命令引用脚本的内容哈希。
 
+### Added (runsOn)
+
+- 仓库画像支持 `runsOn`（字符串或 label 数组）：App 模式下，dispatcher 不再在 hub 上直接执行，而是
+  `workflow_dispatch` `ai-run.yml` 到指定 label 的 runner（自托管 macOS/Windows 可用）。
+- `ai-run.yml`：在目标 runner 上签发目标组织的 installation token、克隆目标仓库、运行标准 runner。
+- `ghapp-scan` 增加 `actions: write`（仅用于 dispatch；App token 无法 dispatch hub 工作流）。
+- 无匹配 runner 时任务保持排队（不静默回退 ubuntu），文档给出取消/补 runner 的指引。
+
 ### Changed
 
 - 检查命令在 agent 运行前冻结；若检查配置被改动，执行冻结版本并标记 `ai-verify-changed`，不再把"跳过验证"当作"验证通过"。

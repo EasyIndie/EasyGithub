@@ -23,6 +23,12 @@ export interface RepoProfile {
   verifyTimeoutMs?: number;
   /** Docker image used to run verification (e.g. "swift:6.0", "mcr.microsoft.com/dotnet/sdk:8.0") */
   verifyContainer?: string;
+  /**
+   * Runner labels for this repository. When set, the dispatcher hands the
+   * issue to `.github/workflows/ai-run.yml` on those labels (self-hosted
+   * macOS/Windows included) instead of running on the hub's ubuntu runner.
+   */
+  runsOn?: string[];
   /** path prefixes that make a change high-risk (draft PR + code owner) */
   protectedPaths?: string[];
   protectedFiles?: string[];
@@ -88,6 +94,8 @@ const LIST_KEYS = [
   "dependencyFiles",
 ] as const;
 const STRING_KEYS = ["learningsFile", "agent", "model", "verifyContainer"] as const;
+/** Accepts a string or an array of strings. */
+const RUNNER_KEYS = ["runsOn"] as const;
 const NUMBER_KEYS = ["verifyTimeoutMs", "maxAttempts", "maxPrsPerDay"] as const;
 
 /** Drop unknown keys / wrong types so a typo cannot silently misconfigure a repo. */
@@ -104,6 +112,14 @@ export function sanitizeProfile(raw: unknown): RepoProfile {
   for (const key of STRING_KEYS) {
     const value = source[key];
     if (typeof value === "string" && value.trim()) out[key] = value.trim();
+  }
+  for (const key of RUNNER_KEYS) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) out.runsOn = [value.trim()];
+    else if (isStringArray(value)) {
+      const labels = value.map((v) => v.trim()).filter(Boolean);
+      if (labels.length > 0) out.runsOn = labels;
+    }
   }
   for (const key of NUMBER_KEYS) {
     const value = source[key];
