@@ -1,0 +1,154 @@
+# 适配不同项目（通用化手册）
+
+EasyGithub 的设计目标是**项目无关**：同一套 runner 服务 Node / Rust / Swift / Java / Go / Python / 多语言仓库。
+本文说明哪些是通用的、哪些需要按仓库配置，以及接入一个新项目的完整清单。
+
+## 1. 已经是通用的部分
+
+| 能力 | 说明 |
+|---|---|
+| 触发契约 | Issue 标签 `ai`（或成员写 `easygh-ai`），状态标签 `ai-*` 固定不变 |
+| 三种接入模式 | Mode 1 全复制 / Mode 2 caller workflow / Mode 3 零文件（GitHub App） |
+| 引擎适配 | `pi` / `claude` / `codex`，统一在 `CodingAgent` 接口后（`src/agents/`） |
+| 仲裁 | 验证命令在 agent 启动前冻结；篡改检测；路径/密钥审计；凭据隔离 |
+| 交付 | 风险分级（low/medium/high）、草稿 PR、auto-merge、事故看护、周报 |
+| 经验注入 | `docs/learnings.md`（可按仓库改名，见 profile） |
+| 评测 | `eval/tasks/*.json` 冻结任务 + 隐藏测试 |
+
+## 2. 需要按仓库配置的部分 = 仓库画像（profile）
+
+配置文件：**`agent-runner/config/repos.json`**（放在 hub，因为零文件模式的目标仓库不能有流水线文件；
+集中存放也便于 review 和回滚）。
+
+```json
+{
+  "_defaults": {},
+  "repos": {
+    "OrzMC/OrzMCApp": {
+      "verify": ["bash scripts/check-platform-split.sh"],
+      "protectedPaths": [".github/", "scripts/", "Sources/", "OrzMC/", "OrzMC.xcodeproj/"],
+      "dependencyFiles": ["Package.swift", "Package.resolved"],
+      "learningsFile": "docs/iteration-flow.md"
+    }
+  }
+}
+```
+
+### 字段
+
+| 字段 | 作用 | 默认 |
+|---|---|---|
+| `verify` | 验证命令数组，按顺序用 ` && ` 连接；**在 agent 启动前冻结** | 自动探测 |
+| `verifyTimeoutMs` | 单次验证超时 | 600000（10 分钟） |
+| `protectedPaths` / `protectedFiles` | 改到这些路径 → **high 风险**（草稿 PR + code owner） | `.github/`、`agent-runner/`、`scripts/`、`eval/`、`LICENSE` |
+| `blockedPaths` / `blockedFiles` | 直接拒绝提交（运行失败） | `.github/workflows/`、`.github/actions/`、`LICENSE` |
+| `sensitivePaths` / `sensitiveFiles` | 允许提交但打 `ai-core` 标签，必须人工审查 | `agent-runner/`、`.github/`、`scripts/`、`package.json` |
+| `ignoredPaths` | 永不提交（vendored/生成物），即使仓库忘了 .gitignore | `node_modules/`、`dist/`、`build/`、`target/` … |
+| `dependencyFiles` | 改到视为供应链变更 → high | `package.json`、`Cargo.toml`、`go.mod` … |
+| `learningsFile` | 注入 TASK.md 的经验文件 | `docs/learnings.md` |
+| `agent` | 默认引擎（标签 `agent:<name>` 仍优先） | `pi` |
+| `model` | 默认模型（`MODEL` 环境变量仍优先） | `deepseek-v4-flash` |
+| `maxAttempts` / `maxPrsPerDay` | 重试次数 / 每日 PR 配额 | 3 / 10 |
+
+### 优先级（从低到高）
+
+```
+内置默认 -> _defaults -> repos["owner/repo"] -> 旧配置 config/verify.json -> 环境变量覆盖
+```
+
+环境变量：`VERIFY_CMD`（单仓库一次性覆盖）、`EASYGH_VERIFY_CMDS`（JSON map，运维临时覆盖）、
+`AI_MAX_ATTEMPTS`、`AI_MAX_PRS_PER_DAY`、`MODEL`、`AGENT`、`PI_TIMEOUT_MS`。
+
+> 列表字段是**替换**而不是叠加：profile 里写了 `protectedPaths` 就完全取代内置值。
+> 但 `.github/`、`.git/`、`LICENSE` 这类信任锚点在任何 profile 下都保持生效。
+
+## 3. 验证命令的运行环境（重要约束）
+
+验证在 **hub 的 runner（默认 `ubuntu-latest`）** 上执行，不是目标仓库的 CI：
+
+- 命令必须能在 Ubuntu 上跑，且**不依赖目标仓库的 CI 环境**（服务、密钥、macOS 工具链）。
+- 需要 macOS/Xcode 的项目（如 iOS）→ 在 profile 里给一个 Ubuntu 可跑的轻量门禁（脚本/静态检查），
+  重量级构建交给目标仓库自己的 CI（作为非必需检查）。
+- 需要私有依赖/密钥的构建 → 在 hub 加 secret，或把命令收窄到静态检查。
+- 没有可跑的检查时，结果会被标记为**未验证**（high 风险 → 草稿 PR），不会被当成"通过"。
+
+### 自动探测顺序（没有 profile 时）
+
+1. `package.json` 的 `check` → `verify` → `test` → `lint`
+2. `Cargo.toml` → `cargo test`
+3. `go.mod` → `go test ./...`
+4. `pytest.ini` / `tox.ini` → `python -m pytest -q`
+5. `Package.swift` → `swift test`
+6. `gradlew` → `./gradlew check`
+7. `pom.xml` → `mvn -B test`
+8. `mix.exs` → `mix test`
+9. 都没有 → 跳过（未验证）
+
+## 4. 新项目接入清单
+
+```
+[ ] 触发标签 `ai` 已建（App 模式会自动补建）
+[ ] 仓库画像：config/repos.json 加一条（verify 必填；否则走自动探测）
+[ ] protectedPaths：把"改了必须人看"的目录写进去（CI、发布脚本、签名、生成代码…）
+[ ] dependencyFiles：该项目的依赖清单（lockfile / Package.resolved / go.sum …）
+[ ] 目标仓库：allow_auto_merge + 0 批准 + 必需检查（bash scripts/enable-ai-gate.sh）
+[ ] 周报：把仓库加进 EASYGH_RETRO_REPOS
+[ ] 冒烟：一个 docs-only 的 `ai` Issue，确认 PR → auto-merge → Issue 关闭
+```
+
+## 5. 典型画像示例
+
+**Node / TypeScript 库**
+
+```json
+"org/lib": {
+  "verify": ["npm ci --ignore-scripts", "npm run lint && npm test"],
+  "protectedPaths": [".github/", "scripts/", "src/generated/"],
+  "dependencyFiles": ["package.json", "package-lock.json"]
+}
+```
+
+**Rust workspace（重量级）**
+
+```json
+"org/bot": {
+  "verify": ["cargo test --workspace"],
+  "verifyTimeoutMs": 1500000,
+  "protectedPaths": [".github/", "crates/core/src/", "migrations/"],
+  "dependencyFiles": ["Cargo.toml", "Cargo.lock"]
+}
+```
+
+**iOS / Swift（hub 跑 Ubuntu）**
+
+```json
+"org/app": {
+  "verify": ["bash scripts/check-platform-split.sh"],
+  "protectedPaths": [".github/", "scripts/", "Sources/", "*.xcodeproj/"],
+  "dependencyFiles": ["Package.swift", "Package.resolved"]
+}
+```
+
+**多语言 monorepo**
+
+```json
+"org/mono": {
+  "verify": ["make verify"],
+  "protectedPaths": [".github/", "infra/", "packages/shared/"],
+  "learningsFile": "docs/agent-notes.md"
+}
+```
+
+## 6. 仍然是"项目相关"的部分（有意保留）
+
+- **提示词语气与语言**：`agent-runner/prompts/*.md` 是模板，按需改（属于流水线自身，改它需要走 PR）。
+- **`docs/learnings.md` 的内容**：每个仓库自己积累，流水线不自动写。
+- **标签契约**（`ai`、`ai-*`）：固定，避免每个仓库一套状态机。
+- **周报/评论的语言**：目前中文；需要多语言时再加 `AI_LOCALE`。
+
+## 7. 给 EasyGithub 自己加项目时的心态
+
+1. 先跑**自动探测**，看它选了什么命令（日志里 `gate frozen: cmd=...`）。
+2. 不可用/太慢 → 写 profile，而不是改 runner 代码。
+3. 只有在"新的判定语义"出现时才改代码（例如新增一种必须人工确认的路径类型）。
+4. 每次改 profile 都算"改流水线"：走 PR，`ai-core` 标签，人工审查。

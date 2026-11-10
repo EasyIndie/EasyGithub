@@ -172,9 +172,11 @@ Runs the exact same runner code locally (clone → branch → Pi → commit → 
 .github/workflows/ai-retro.yml   # weekly retro issue
 .github/CODEOWNERS               # which changes always need a human
 agent-runner/                    # Agent Runner (TypeScript, zero runtime deps)
+  config/repos.json              # per-repo profiles (see docs/portability.md)
   prompts/                       # task templates (bug-fix / feature / review)
   src/main.ts                    # orchestration
   src/risk.ts                    # risk tiers + auto-merge predicate
+  src/profile.ts                 # per-repo profile (verify/paths/agent/model)
   src/git.ts, src/github.ts      # git + gh wrappers
   src/agents/{types,pi,registry}.ts
   test/                          # node:test suite (runs in CI)
@@ -188,6 +190,7 @@ Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committi
 ## 参考文档
 
 - [端到端 AI 开发工作流（自动化边界 / 人机分工）](docs/ai-workflow.md)
+- [适配不同项目（仓库画像 / 自动探测 / 接入清单）](docs/portability.md)
 - [多 Agent 启用与模型配置](docs/agents.md)
 - [实时响应方案（事件驱动 vs 轮询）](docs/realtime.md)
 - [在其它组织中使用 EasyGithub](docs/other-orgs.md)

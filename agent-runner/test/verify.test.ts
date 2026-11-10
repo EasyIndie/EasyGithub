@@ -71,6 +71,30 @@ describe("verify gate", () => {
     assert.equal(result.ok, false);
   });
 
+  it("prefers a repository profile command over detection", async () => {
+    writePackage({ check: "node -e \"process.exit(0)\"" });
+    const spec = await captureVerifySpec(dir, { verify: ["bash scripts/lint.sh"] });
+    assert.equal(spec.command, "bash scripts/lint.sh");
+    assert.equal(spec.scriptBody, null);
+  });
+
+  it("detects additional ecosystems when no profile is set", async () => {
+    writeFileSync(join(dir, "Package.swift"), "// swift\n");
+    const spec = await captureVerifySpec(dir);
+    assert.equal(spec.command, "swift test");
+  });
+
+  it("detects a weakened verification script (self-reference hole)", async () => {
+    mkdirSync(join(dir, "scripts"), { recursive: true });
+    writeFileSync(join(dir, "scripts", "check.sh"), "#!/usr/bin/env bash\nexit 0\n");
+    const spec = await captureVerifySpec(dir, { verify: ["bash scripts/check.sh"] });
+    assert.deepEqual(Object.keys(spec.gateFiles ?? {}), ["scripts/check.sh"]);
+    writeFileSync(join(dir, "scripts", "check.sh"), "#!/usr/bin/env bash\n# weakened\nexit 0\n");
+    const result = await runVerify(dir, spec, 30_000);
+    assert.equal(result.tampered, true);
+    assert.equal(result.verified, false);
+  });
+
   it("reports 'no check command' as skipped, never as verified", async () => {
     const empty = mkdtempSync(join(tmpdir(), "easygh-empty-"));
     try {

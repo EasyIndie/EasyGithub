@@ -19,6 +19,10 @@ export interface RiskInput {
   /** added + removed lines in the staged diff */
   changedLines: number;
   verify: { verified: boolean; tampered: boolean; skipped: boolean } | null;
+  /** repository-specific path rules (see src/profile.ts) */
+  protectedPaths?: string[];
+  protectedFiles?: string[];
+  dependencyFiles?: string[];
 }
 
 export interface RiskAssessment {
@@ -26,7 +30,11 @@ export interface RiskAssessment {
   reasons: string[];
 }
 
-/** Trust boundary + pipeline: humans own these forever. */
+/** Trust boundary + pipeline: humans own these forever, in every repository. */
+const BASELINE_PREFIXES = [".github/", ".git/"];
+const BASELINE_FILES = ["LICENSE", "LICENCE", ".github/CODEOWNERS"];
+
+/** Defaults for EasyGithub itself; other projects override via config/repos.json. */
 const HIGH_PREFIXES = [".github/", "agent-runner/", "scripts/", "eval/"];
 const HIGH_FILES = ["LICENSE", "LICENCE", ".github/CODEOWNERS"];
 
@@ -62,14 +70,17 @@ export function assessRisk(input: RiskInput): RiskAssessment {
   };
 
   const paths = input.paths.map(normalize);
+  const highPrefixes = [...BASELINE_PREFIXES, ...(input.protectedPaths ?? HIGH_PREFIXES)];
+  const highFiles = [...BASELINE_FILES, ...(input.protectedFiles ?? HIGH_FILES)];
+  const dependencyFiles = input.dependencyFiles ?? DEPENDENCY_FILES;
   const protectedPaths = paths.filter(
-    (p) => HIGH_FILES.includes(p) || HIGH_PREFIXES.some((prefix) => p.startsWith(prefix)),
+    (p) => highFiles.includes(p) || highPrefixes.some((prefix) => p.startsWith(prefix)),
   );
   if (protectedPaths.length > 0) {
     bump("high", `touches protected path(s): ${protectedPaths.slice(0, 4).join(", ")}`);
   }
 
-  const dependencyChanges = paths.filter((p) => DEPENDENCY_FILES.includes(p));
+  const dependencyChanges = paths.filter((p) => dependencyFiles.includes(p));
   if (dependencyChanges.length > 0) {
     bump("high", `changes dependency manifest(s): ${dependencyChanges.join(", ")}`);
   }

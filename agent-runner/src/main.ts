@@ -23,6 +23,7 @@ import {
 import { renderLearnings } from "./learnings.ts";
 import { metricsLine, writeMetrics } from "./metrics.ts";
 import { auditStagedChanges, describeAudit, stageChanges } from "./policy.ts";
+import { profileFor } from "./profile.ts";
 import { classifyTask, renderTaskMarkdown, type TaskKind } from "./prompt.ts";
 import { assessRisk, autoMergeDecision, parseAutoMergeMode, type RiskAssessment } from "./risk.ts";
 import { routeAgent } from "./router.ts";
@@ -170,6 +171,12 @@ async function main(): Promise<void> {
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) throw new Error(`Bad ISSUE_NUMBER: ${process.env.ISSUE_NUMBER}`);
 
   const startedAt = Date.now();
+  // Repository profile (hub-side config/repos.json): project-specific verify
+  // commands, protected paths and agent/model, without touching this project.
+  const profile = profileFor(repo);
+  if (Object.keys(profile).length > 0) {
+    log(`profile: ${Object.keys(profile).sort().join(",")}`);
+  }
   const thinking = process.env.THINKING?.trim() || "high";
   const defaultBranch = process.env.DEFAULT_BRANCH ?? "main";
   const workDir = process.env.WORK_DIR ?? process.cwd();
@@ -180,11 +187,11 @@ async function main(): Promise<void> {
   // install/push overhead. Every step below is clamped by the remaining budget
   // so a slow run reports "budget exhausted" instead of being killed mid-flight.
   const piTimeoutMs = intEnv("PI_TIMEOUT_MS", 15 * 60 * 1000, 60_000, 60 * 60 * 1000);
-  const verifyTimeoutMs = intEnv("VERIFY_TIMEOUT_MS", 10 * 60 * 1000, 10_000, 60 * 60 * 1000);
+  const verifyTimeoutMs = intEnv("VERIFY_TIMEOUT_MS", profile.verifyTimeoutMs ?? 10 * 60 * 1000, 10_000, 60 * 60 * 1000);
   const budgetMs = intEnv("AGENT_BUDGET_MS", 75 * 60 * 1000, 60_000, 6 * 60 * 60 * 1000);
   const lockTtlMs = intEnv("LOCK_TTL_MS", 3 * 60 * 60 * 1000, 10 * 60 * 1000, 24 * 60 * 60 * 1000);
-  const maxAttempts = intEnv("AI_MAX_ATTEMPTS", 3, 1, 5);
-  const maxPrsPerDay = intEnv("AI_MAX_PRS_PER_DAY", 10, 0, 200);
+  const maxAttempts = intEnv("AI_MAX_ATTEMPTS", profile.maxAttempts ?? 3, 1, 5);
+  const maxPrsPerDay = intEnv("AI_MAX_PRS_PER_DAY", profile.maxPrsPerDay ?? 10, 0, 200);
   const autoMergeMode = parseAutoMergeMode(process.env.AI_AUTOMERGE);
   const reviewer = process.env.AI_REVIEWER?.trim() ?? "";
   const remainingMs = () => budgetMs - (Date.now() - startedAt);
@@ -283,18 +290,20 @@ async function main(): Promise<void> {
             ...humanComments.map((c) => `**@${c.author}** (${c.createdAt}):\n${c.body}`),
           ].join("\n");
     const issueBody = issue.body + humanContext;
-    const learnings = renderLearnings(workDir, `${issue.title} ${issue.body}`);
+    const learnings = renderLearnings(workDir, `${issue.title} ${issue.body}`, profile.learningsFile);
     if (learnings) log("injected repository learnings from docs/learnings.md");
 
     // --- agent selection: env override > issue label agent:x > rules > default ---
     const explicitAgent = process.env.AGENT?.trim();
-    agentName = explicitAgent ? explicitAgent.toLowerCase() : await routeAgent({ labels: issue.labels, title: issue.title });
+    agentName = explicitAgent
+      ? explicitAgent.toLowerCase()
+      : await routeAgent({ labels: issue.labels, title: issue.title }, profile.agent);
     const agent = selectAgent(agentName);
     const isPi = agentName === "pi";
     provider = isPi ? (process.env.PROVIDER ?? "deepseek") : agentName;
     model = isPi
-      ? process.env.MODEL?.trim() || "deepseek-v4-flash"
-      : (process.env[`AI_${agentName.toUpperCase()}_MODEL`]?.trim() ?? "default");
+      ? process.env.MODEL?.trim() || profile.model || "deepseek-v4-flash"
+      : (process.env[`AI_${agentName.toUpperCase()}_MODEL`]?.trim() ?? profile.model ?? "default");
     const extraArgs = isPi && thinking ? ["--thinking", thinking] : [];
     log(`agent=${agent.name} provider=${provider} model=${model} (override=${explicitAgent ?? "no"})`);
 
@@ -327,7 +336,7 @@ async function main(): Promise<void> {
     log(`branch ${branch} ready`);
 
     // --- freeze the referee before the agent can touch the repo --------------
-    const verifySpec = await captureVerifySpec(workDir);
+    const verifySpec = await captureVerifySpec(workDir, profile);
     log(`gate frozen: cmd="${verifySpec.command ?? "(none)"}" (${verifySpec.scriptBody ? "script body captured" : "no script body"})`);
 
     // --- remove push credentials for the agent phase --------------------------
@@ -463,7 +472,7 @@ async function main(): Promise<void> {
     }
 
     // --- verify passed: package & deliver --------------------------------------
-    const staged = stageChanges(workDir);
+    const staged = stageChanges(workDir, profile);
     if (staged.ignored.length > 0) log(`not committing ${staged.ignored.length} generated path(s): ${staged.ignored.slice(0, 5).join(",")}`);
 
     if (!git.hasStagedChanges(workDir)) {
@@ -477,7 +486,7 @@ async function main(): Promise<void> {
     }
 
     // Policy gate: path allow-list + secret scan on the staged diff.
-    const audit = auditStagedChanges(workDir);
+    const audit = auditStagedChanges(workDir, profile);
     if (!audit.ok) {
       log(`policy violation: blocked=${audit.blocked.length} secrets=${audit.secrets.length}`);
       postComment(
@@ -499,6 +508,9 @@ async function main(): Promise<void> {
       verify: verifyResult
         ? { verified: verifyResult.verified, tampered: verifyResult.tampered, skipped: verifyResult.skipped }
         : null,
+      protectedPaths: profile.protectedPaths,
+      protectedFiles: profile.protectedFiles,
+      dependencyFiles: profile.dependencyFiles,
     });
     log(`risk=${risk.level} (${risk.reasons.join("; ")}) files=${changedFiles} lines=${changedLines}`);
 

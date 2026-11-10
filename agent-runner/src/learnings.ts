@@ -75,20 +75,20 @@ export function selectLearnings(markdown: string, query: string, limit = 2): Sec
   return ranked.slice(0, limit).map((entry) => entry.section);
 }
 
-/** Read docs/learnings.md from a worktree (optional). */
-export function readLearnings(workDir: string): string {
-  const file = join(workDir, LEARNINGS_FILE);
-  if (!existsSync(file)) return "";
+/** Read the learnings file from a worktree (optional). */
+export function readLearnings(workDir: string, file = LEARNINGS_FILE): string {
+  const path = join(workDir, file);
+  if (!existsSync(path)) return "";
   try {
-    return readFileSync(file, "utf8");
+    return readFileSync(path, "utf8");
   } catch {
     return "";
   }
 }
 
 /** Render the learnings block appended to TASK.md, or "" when there is none. */
-export function renderLearnings(workDir: string, query: string): string {
-  const markdown = readLearnings(workDir);
+export function renderLearnings(workDir: string, query: string, file = LEARNINGS_FILE): string {
+  const markdown = readLearnings(workDir, file);
   if (!markdown) return "";
 
   const picked = selectLearnings(markdown, query);
@@ -107,7 +107,7 @@ export function renderLearnings(workDir: string, query: string): string {
     ``,
     `---`,
     ``,
-    `## 仓库经验（来自 ${LEARNINGS_FILE}，仅作提示）`,
+    `## 仓库经验（来自 ${file}，仅作提示）`,
     ``,
     blocks.join("\n\n"),
     ``,

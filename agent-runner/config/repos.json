@@ -1,0 +1,22 @@
+{
+  "_comment": "Per-repository profile. Lives in the hub because zero-file (App) targets cannot host pipeline files. Precedence: defaults < _defaults < repos[<owner>/<repo>] < legacy config/verify.json < env overrides (VERIFY_CMD, AI_*). List fields REPLACE the built-in value; trust anchors (.github/, .git/, LICENSE) are always kept. See docs/portability.md.",
+  "_defaults": {},
+  "repos": {
+    "OrzMC/OrzMCApp": {
+      "_comment": "Swift/Xcode app. The hub runs on Ubuntu, so verification uses an Ubuntu-friendly script instead of xcodebuild (the macOS matrix still runs in the repo's own CI as a non-required signal).",
+      "verify": ["bash scripts/check-platform-split.sh"],
+      "protectedPaths": [
+        ".github/",
+        "scripts/",
+        "Sources/",
+        "OrzMC/",
+        "OrzMCTests/",
+        "OrzMCUITests/",
+        "OrzMC.xcodeproj/",
+        "products/"
+      ],
+      "dependencyFiles": ["Package.swift", "Package.resolved", "OrzMC.xcodeproj/project.pbxproj"],
+      "learningsFile": "docs/iteration-flow.md"
+    }
+  }
+}

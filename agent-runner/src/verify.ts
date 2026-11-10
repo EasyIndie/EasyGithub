@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runAsync } from "./util/exec.ts";
+import { verifyCommandFromProfile, type RepoProfile } from "./profile.ts";
 
 /**
  * Independent referee: run the repository's own checks on the working tree
@@ -27,6 +29,8 @@ export interface VerifySpec {
   scriptBody: string | null;
   /** Hash of the gate configuration at capture time. */
   fingerprint: string;
+  /** Content hash of scripts the command invokes (e.g. `bash scripts/check.sh`). */
+  gateFiles?: Record<string, string>;
 }
 
 export interface VerifyResult {
@@ -42,16 +46,31 @@ export interface VerifyResult {
   timedOut: boolean;
 }
 
-const GATE_FILES = ["Cargo.toml", "go.mod", "pytest.ini", "tox.ini"];
+const GATE_FILES = [
+  "Cargo.toml",
+  "go.mod",
+  "pytest.ini",
+  "tox.ini",
+  "Package.swift",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "gradlew",
+  "mix.exs",
+];
 
 interface Gate {
   command: string | null;
   scriptBody: string | null;
 }
 
-async function resolveGate(workDir: string): Promise<Gate> {
+async function resolveGate(workDir: string, profile?: RepoProfile): Promise<Gate> {
   const override = process.env.VERIFY_CMD?.trim();
   if (override) return { command: override, scriptBody: null };
+
+  // Repository profile (hub-side, reviewable) wins over heuristics.
+  const configured = profile ? verifyCommandFromProfile(profile) : null;
+  if (configured) return { command: configured, scriptBody: null };
 
   try {
     const pkg = JSON.parse(await readFile(join(workDir, "package.json"), "utf8")) as {
@@ -73,12 +92,18 @@ async function resolveGate(workDir: string): Promise<Gate> {
   if (existsSync(join(workDir, "pytest.ini")) || existsSync(join(workDir, "tox.ini"))) {
     return { command: "python -m pytest -q", scriptBody: null };
   }
+  // More ecosystems: only when the manifest is present. The toolchain must
+  // exist on the runner (Ubuntu for App mode), otherwise use a profile.
+  if (existsSync(join(workDir, "Package.swift"))) return { command: "swift test", scriptBody: null };
+  if (existsSync(join(workDir, "gradlew"))) return { command: "./gradlew check --console=plain", scriptBody: null };
+  if (existsSync(join(workDir, "pom.xml"))) return { command: "mvn -q -B test", scriptBody: null };
+  if (existsSync(join(workDir, "mix.exs"))) return { command: "mix test", scriptBody: null };
   return { command: null, scriptBody: null };
 }
 
 /** Backwards-compatible helper: the command only. */
-export async function resolveCommand(workDir: string): Promise<string | null> {
-  return (await resolveGate(workDir)).command;
+export async function resolveCommand(workDir: string, profile?: RepoProfile): Promise<string | null> {
+  return (await resolveGate(workDir, profile)).command;
 }
 
 async function gateFingerprint(workDir: string, command: string | null): Promise<string> {
@@ -99,13 +124,43 @@ async function gateFingerprint(workDir: string, command: string | null): Promise
   return createHash("sha256").update(parts.join("\n")).digest("hex");
 }
 
+/**
+ * Files the command depends on (`bash scripts/check.sh`, `python tools/x.py`, …).
+ *
+ * Without this, an agent could "pass" by weakening the script that judges it —
+ * the single most important self-reference hole for script-based projects.
+ */
+function hashedFiles(workDir: string, command: string | null): Record<string, string> {
+  if (!command) return {};
+  const out: Record<string, string> = {};
+  const tokens = command.split(/[\s;&|()<>]+/);
+  let count = 0;
+  for (const token of tokens) {
+    if (count >= 5) break;
+    if (!token || token.startsWith("-") || token.includes("*")) continue;
+    if (!/^[\w./-]+$/.test(token)) continue;
+    if (!/\.(sh|bash|zsh|py|js|mjs|cjs|ts|rb|pl|php|gradle|kts)$/.test(token) && !/Makefile$/.test(token)) continue;
+    try {
+      const content = readFileSync(join(workDir, token));
+      if (content.length > 1024 * 1024) continue;
+      out[token] = createHash("sha256").update(content).digest("hex");
+      count++;
+    } catch {
+      // not a file in the worktree -> ignore
+    }
+  }
+  return out;
+}
+
 /** Snapshot the gate before the agent is allowed to touch anything. */
-export async function captureVerifySpec(workDir: string): Promise<VerifySpec> {
-  const gate = await resolveGate(workDir);
+export async function captureVerifySpec(workDir: string, profile?: RepoProfile): Promise<VerifySpec> {
+  const gate = await resolveGate(workDir, profile);
+  const gateFiles = hashedFiles(workDir, gate.command);
   return {
     command: gate.command,
     scriptBody: gate.scriptBody,
-    fingerprint: await gateFingerprint(workDir, gate.command),
+    fingerprint: `${await gateFingerprint(workDir, gate.command)}|scripts:${JSON.stringify(gateFiles)}`,
+    gateFiles,
   };
 }
 
@@ -150,7 +205,8 @@ export async function runVerify(
   }
 
   const budgetMs = clampTimeout(timeoutMs);
-  const tampered = (await gateFingerprint(workDir, spec.command)) !== spec.fingerprint;
+  const fingerprintNow = `${await gateFingerprint(workDir, spec.command)}|scripts:${JSON.stringify(hashedFiles(workDir, spec.command))}`;
+  const tampered = fingerprintNow !== spec.fingerprint;
 
   const deps = await ensureDeps(workDir, budgetMs);
   if (!deps.ok) {

@@ -68,6 +68,21 @@ describe("policy audit", () => {
     assert.deepEqual(audit.sensitive.sort(), ["agent-runner/src/main.ts", "scripts/dev-run.sh"]);
   });
 
+  it("honours repository-specific rules while keeping the baseline", () => {
+    write("Sources/generated/lexer.swift", "x\n");
+    write("Sources/App.swift", "x\n");
+    write(".github/workflows/ci.yml", "name: x\n");
+    stageChanges(dir, { blockedPaths: ["Sources/generated/"] });
+    const audit = auditStagedChanges(dir, {
+      blockedPaths: ["Sources/generated/"],
+      sensitivePaths: ["Sources/"],
+    });
+    assert.equal(audit.ok, false);
+    assert.ok(audit.blocked.includes("Sources/generated/lexer.swift"));
+    assert.ok(audit.blocked.includes(".github/workflows/ci.yml"), "baseline stays blocked");
+    assert.ok(audit.sensitive.includes("Sources/App.swift"));
+  });
+
   it("detects credentials in added lines", () => {
     write("src/config.ts", "const key = 'sk-abcdefghijklmnopqrstuvwx';\n");
     stageChanges(dir);
