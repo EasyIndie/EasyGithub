@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runAsync, runSync } from "./util/exec.ts";
 import { listInstallationRepos, runWatchdog } from "./watch.ts";
+import { profileFor } from "./profile.ts";
 
 /**
  * Central dispatcher for the GitHub-App (zero-file) cross-repo mode.
@@ -176,6 +177,39 @@ function isHandled(repo: string, number: number): boolean {
   return Number(prs) > 0;
 }
 
+/**
+ * Hand one issue to `.github/workflows/ai-run.yml` on the labels from the
+ * repository profile (self-hosted macOS/Windows included). Uses the hub's own
+ * GITHUB_TOKEN: the per-org App token cannot dispatch workflows in the hub.
+ */
+function dispatchToRunner(repo: string, issue: number, runsOn: string[]): boolean {
+  const hub = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!hub || !token) {
+    console.log("[dispatch] cannot dispatch: GITHUB_REPOSITORY/GITHUB_TOKEN missing");
+    return false;
+  }
+  const args = [
+    "workflow",
+    "run",
+    "ai-run.yml",
+    "-R",
+    hub,
+    "-f",
+    `repo=${repo}`,
+    "-f",
+    `issue=${issue}`,
+    "-f",
+    `runs_on=${JSON.stringify(runsOn)}`,
+  ];
+  const res = runSync("bash", ["-c", `GH_TOKEN=${sq(token)} gh ${args.map(sq).join(" ")}`]);
+  if (res.status !== 0) {
+    console.log(`[dispatch] ai-run dispatch failed: ${res.stderr.trim().slice(0, 300)}`);
+    return false;
+  }
+  return true;
+}
+
 async function processIssue(c: Candidate, budgetLeftMs: number): Promise<void> {
   const runnerMain = new URL("./main.ts", import.meta.url).pathname;
   const tmpBase = join(process.env.RUNNER_TEMP ?? tmpdir(), "ghapp-dispatch");
@@ -185,6 +219,16 @@ async function processIssue(c: Candidate, budgetLeftMs: number): Promise<void> {
 
   const token = process.env.GH_TOKEN ?? "";
   console.log(`\n[dispatch] === ${c.repo} #${c.number} ===`);
+
+  // Profile-driven runner: hand off to a workflow on the configured labels.
+  const runsOn = profileFor(c.repo).runsOn;
+  if (runsOn && runsOn.length > 0) {
+    const dispatched = dispatchToRunner(c.repo, c.number, runsOn);
+    console.log(
+      `[dispatch] ${c.repo} #${c.number} -> ai-run on [${runsOn.join(", ")}]${dispatched ? "" : " (dispatch failed; running inline on this runner)"}`,
+    );
+    if (dispatched) return;
+  }
 
   const cloneUrl = `https://x-access-token:${token}@github.com/${c.repo}.git`;
   const clone = runSync("git", ["clone", "--quiet", "--single-branch", cloneUrl, workDir], { env: { GIT_TERMINAL_PROMPT: "0" } });

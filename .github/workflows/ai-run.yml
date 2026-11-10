@@ -1,0 +1,123 @@
+name: ai-run
+
+# Runs one AI task on a runner chosen by the repository profile.
+#
+# `ghapp-scan` dispatches this workflow when `agent-runner/config/repos.json`
+# sets `runsOn` for the target repository (e.g. a self-hosted macOS runner for
+# an Xcode project). Without `runsOn`, the dispatcher runs the task inline on
+# ubuntu-latest as before.
+#
+# The job mints an installation token for the target organization, clones the
+# target into $RUNNER_TEMP and runs the standard runner against it.
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Target repository (owner/name)"
+        required: true
+        type: string
+      issue:
+        description: "Issue number"
+        required: true
+        type: string
+      runs_on:
+        description: 'JSON array of runner labels, e.g. ["self-hosted","macos"]'
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-run-${{ inputs.repo }}-${{ inputs.issue }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    # If no runner matches these labels the job stays queued: cancel it or fix
+    # the profile. That is intentional — silently falling back to ubuntu would
+    # produce unverifiable results for macOS/Windows toolchains.
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 120
+    env:
+      TARGET: ${{ inputs.repo }}
+      ISSUE: ${{ inputs.issue }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Resolve target organization
+        id: target
+        run: |
+          set -euo pipefail
+          ORG="${TARGET%%/*}"
+          case "$TARGET" in */*) ;; *) echo "::error::repo must be owner/name"; exit 1 ;; esac
+          {
+            echo "org=${ORG}"
+            echo "key=$(printf '%s' "$ORG" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_' | sed 's/_*$//')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Mint token for the target organization
+        id: mint
+        env:
+          EASYGH_APP_ID: ${{ vars[format('EASYGH_APP_ID_{0}', steps.target.outputs.key)] || vars.EASYGH_APP_ID }}
+          EASYGH_APP_PRIVATE_KEY: ${{ secrets[format('EASYGH_APP_PRIVATE_KEY_{0}', steps.target.outputs.key)] || secrets.EASYGH_APP_PRIVATE_KEY }}
+          ORG: ${{ steps.target.outputs.org }}
+        run: node scripts/ghapp-token.mjs
+
+      - name: Clone the target repository
+        env:
+          GH_TOKEN: ${{ steps.mint.outputs.token }}
+        run: |
+          set -euo pipefail
+          WORK="${RUNNER_TEMP}/ai-target"
+          rm -rf "$WORK"
+          git clone --quiet --single-branch \
+            "https://x-access-token:${GH_TOKEN}@github.com/${TARGET}.git" "$WORK"
+          {
+            echo "WORK_DIR=${WORK}"
+            echo "DEFAULT_BRANCH=$(gh api "repos/${TARGET}" --jq .default_branch)"
+          } >> "$GITHUB_ENV"
+
+      - name: Run the agent runner
+        env:
+          GH_TOKEN: ${{ steps.mint.outputs.token }}
+          GITHUB_REPOSITORY: ${{ inputs.repo }}
+          ISSUE_NUMBER: ${{ inputs.issue }}
+          WORK_DIR: ${{ env.WORK_DIR }}
+          DEFAULT_BRANCH: ${{ env.DEFAULT_BRANCH }}
+          RUNNER_TEMP: ${{ runner.temp }}
+          AGENT: ${{ vars.AI_AGENT || '' }}
+          MODEL: ${{ vars.AI_MODEL || '' }}
+          THINKING: ${{ vars.AI_THINKING || '' }}
+          AI_MAX_ATTEMPTS: ${{ vars.AI_MAX_ATTEMPTS || '3' }}
+          AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
+          AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
+          AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
+          AGENT_BUDGET_MS: "4500000"
+          PI_TIMEOUT_MS: "900000"
+          VERIFY_TIMEOUT_MS: "600000"
+          EASYGH_VERIFY_CMDS: ${{ vars.EASYGH_VERIFY_CMDS }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DEEPSEEK_API_KEY }}
+          ANTHROPIC_MODEL: "deepseek-v4-pro[1m]"
+          ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-pro[1m]"
+          ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-pro[1m]"
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-v4-flash
+          CLAUDE_CODE_SUBAGENT_MODEL: deepseek-v4-flash
+          CLAUDE_CODE_EFFORT_LEVEL: max
+          CLAUDE_CODE_AUTO_COMPACT_WINDOW: "786432"
+        run: node agent-runner/src/main.ts
+
+      - name: Upload run logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ai-run-${{ inputs.repo }}-${{ inputs.issue }}
+          path: ${{ runner.temp }}/ai-issue-${{ inputs.issue }}
+          if-no-files-found: ignore
+          retention-days: 7
