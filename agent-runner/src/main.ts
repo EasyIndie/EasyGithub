@@ -166,7 +166,9 @@ function riskLine(risk: RiskAssessment | null): string {
 }
 
 async function main(): Promise<void> {
-  const repo = requireEnv("GITHUB_REPOSITORY");
+  // `AI_TARGET_REPO` is for workflows that cannot override the reserved
+  // GITHUB_REPOSITORY variable (ai-run.yml runs one task for a foreign repo).
+  const repo = process.env.AI_TARGET_REPO?.trim() || requireEnv("GITHUB_REPOSITORY");
   const issueNumber = Number(requireEnv("ISSUE_NUMBER"));
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) throw new Error(`Bad ISSUE_NUMBER: ${process.env.ISSUE_NUMBER}`);
 
