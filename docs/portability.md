@@ -232,10 +232,10 @@ providers/
 
 ## 7. 仍然是“项目相关”的部分（有意保留）
 
-- **提示词语气与语言**：`agent-runner/prompts/*.md` 是模板，按需改（属于流水线自身，改它需要走 PR）。
+- **提示词语气**：`agent-runner/prompts/<variant>/*.md` 按需改（改模板属于改流水线，走 PR）。语言不用改模板：见 `locale` / `AI_LOCALE`。
 - **`docs/learnings.md` 的内容**：每个仓库自己积累，流水线不自动写。
 - **标签契约**（`ai`、`ai-*`）：固定，避免每个仓库一套状态机。
-- **周报/评论的语言**：目前中文；需要多语言时再加 `AI_LOCALE`。
+- **周报/评论的语言**：固定中文（`AI_LOCALE` 只管 `TASK.md`）。
 
 ## 8. 给 EasyGithub 自己加项目时的心态
 

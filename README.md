@@ -47,19 +47,13 @@ Routing: issue label `agent:<name>` > repo variable `AI_AGENT` > rules in
 
 - GitHub Actions minutes (free tier or paid) — the job runs a full Pi session, typically several minutes.
 - One provider API key stored as a repo secret: `DEEPSEEK_API_KEY` (DeepSeek V4; see below).
-  Repository variables (optional): `AI_MODEL` (default `deepseek-v4-flash`), `AI_THINKING` (default `high`),
-  `AI_MAX_ATTEMPTS` (default `3`, verification retries), `VERIFY_CMD` (override the check
-  command; default: auto-detect `check`/`verify`/`test`/`lint` in `package.json`, then
-  `cargo test` / `go test ./...` by language),
-  `AI_AGENT` (force a specific agent for every run; default: auto-route),
-  `AI_AUTOMERGE` (`off`/`probation`/`on`, default `off`), `AI_MAX_PRS_PER_DAY` (default 10),
-  `AI_REVIEWER` (cc'd when the agent needs a decision).
-  On EasyGithub itself (public repo) all of this is already configured; other repos need the
-  installer (`install-to-repo.sh`) or the App to set it up.
-- **Zero-file targets (App mode)** get their verification command from the hub, since the target
-  has no variables of its own: `agent-runner/config/verify.json` (committed, reviewable), e.g.
-  `{"EasyIndie/EasyBot": { "cmd": "cargo test", "timeout_ms": 900000 }}`; the hub variable
-  `EASYGH_VERIFY_CMDS` (same JSON shape) overrides the file when set.
+  Optional variables (all listed with defaults in [docs/usage.md](docs/usage.md) §6):
+  `AI_MODEL`, `AI_THINKING`, `AI_AGENT`, `AI_MAX_ATTEMPTS`, `AI_AUTOMERGE`, `AI_MAX_PRS_PER_DAY`,
+  `AI_REVIEWER`, `AI_LOCALE`.
+- **Zero-file targets (App mode)** get their verification command from the hub, because the target
+  has no variables of its own: `agent-runner/config/repos.json` (profile `verify`, committed and
+  reviewable) → legacy `config/verify.json` → hub variable `EASYGH_VERIFY_CMDS` (JSON map).
+  See [docs/portability.md](docs/portability.md).
 
 ### Model / provider
 
@@ -80,7 +74,10 @@ compatibility layer needed**:
 
 ### Retrying after a failure
 
-Remove the `ai-failed` label, then add `ai` again. Removing `ai-failed` is what re-arms the issue.
+Preferred: run the `ai-decide` workflow with `action=retry` (see
+[docs/usage.md](docs/usage.md) §5). It re-arms the issue, drops the old branch
+(and with it the old PR) and redoes the work on the latest base.
+Manually that is: remove `ai-failed`/`ai-needs-input`/`ai-deferred`, then add `ai` again.
 
 ### PR CI
 
@@ -92,7 +89,7 @@ Every pull request (including AI pipeline PRs) runs `npm run check` via `.github
 
 - **组织内（EasyIndie）成员**：GitHub App 已全组织安装 → 用 **Mode 3**（零文件）。
 - **外部/个人仓库**：仓库里不能只写注释就让 App 工作 → 用 **Mode 2**（推荐，1 个文件）或 **Mode 1**。
-  （也可以自建同名 GitHub App 后获得 Mode 3，见 `docs/realtime.md`。）
+  （也可以自建同名 GitHub App 后获得 Mode 3，见 `docs/other-orgs.md`。）
 
 **Mode 3 — GitHub App (zero-file; EasyIndie org only).** A GitHub App
 (`easygithub-ai`, installed org-wide) lets the hub poll org Issues and write
@@ -118,36 +115,16 @@ bash scripts/install-to-repo.sh EasyIndie/<repo>    # mode 2 caller
 bash scripts/install-to-repo.sh EasyIndie/<repo> --copy   # mode 1
 ```
 
-### 30 秒快速上手（按模式）
+### 快速上手
 
-**Mode 3（零文件 · EasyIndie 成员）** — 什么都不用装：
-```bash
-# 1) 在任意 EasyIndie 仓库开一个 Issue，标题/正文含 easygh-ai，或打上 ai 标签
-gh issue create -R EasyIndie/<repo> --title "fix: xxx" --body "...\n\n<!-- easygh-ai -->"
-# 2) 等 ≤5 分钟，hub 轮询发现后自动开 PR（标签/secret 都不需要你管）
-```
+三种模式的命令、触发方式与验收步骤统一写在
+**[docs/usage.md](docs/usage.md)（使用手册）**，这里只保留模式选型：
 
-**Mode 2（1 个文件 · 任何仓库）** — 安装一次即可用：
-```bash
-# 0) 前置：gh 已登录、对目标仓库有 admin、有 DeepSeek key（或准备手动设 secret）
-gh repo clone EasyIndie/EasyGithub ~/easygh
-# 1) 自动：建 caller workflow + 标签 + 开 PR（若能读到本地 DeepSeek key 则一并设 secret）
-bash ~/easygh/scripts/install-to-repo.sh <you>/<repo>
-#    若提示跳过 secret：手动补一次 gh secret set DEEPSEEK_API_KEY -R <you>/<repo>（值从 platform.deepseek.com 获取）
-# 2) 合并安装 PR（gh pr list 找到编号后）
-gh pr merge <PR#> -R <you>/<repo>
-# 3) 用起来：给任意 Issue 打 ai 标签
-gh issue edit <N> -R <you>/<repo> --add-label ai
-```
-
-**Mode 1（全复制 · 任何仓库，需离线自包含）** — 同 Mode 2，仅安装命令加 `--copy`：
-```bash
-bash ~/easygh/scripts/install-to-repo.sh <you>/<repo> --copy
-# 之后同上：合并安装 PR → 打 ai 标签触发
-```
-
-> 三种模式都支持：标签 `feature`/`bug` 选模板、`agent:claude`/`agent:codex` 选引擎；
-> 验证失败自动重试（`AI_MAX_ATTEMPTS`），通过后才开 PR。更多见 [docs/agents.md](docs/agents.md)。
+| 你的情况 | 用哪个 |
+|---|---|
+| 就在 EasyIndie 组织内，目标仓库不想放文件 | Mode 3（App，零文件） |
+| 任意仓库，允许放 1 个 workflow | Mode 2（caller，秒级触发） |
+| 任意仓库，要求完全自包含、不依赖本仓库 | Mode 1（`--copy`，全复制） |
 
 Known platform limitation (verified): a reusable workflow invoked cross-repo
 cannot declare a `permissions` key (fails at queue time); write access comes
@@ -173,21 +150,21 @@ Runs the exact same runner code locally (clone → branch → Pi → commit → 
 .github/CODEOWNERS               # which changes always need a human
 agent-runner/                    # Agent Runner (TypeScript, zero runtime deps)
   config/repos.json              # per-repo profiles (see docs/portability.md)
-  prompts/                       # task templates (bug-fix / feature / review)
+  prompts/                       # task templates (en + zh-cn + strict example)
   src/main.ts                    # orchestration
   src/risk.ts                    # risk tiers + auto-merge predicate
   src/profile.ts                 # per-repo profile (verify/paths/agent/model/runsOn/locale)
   src/providers/                 # platform seam (github implemented)
-  src/prompt.ts, prompts/        # task templates (en + zh-cn + per-repo variants)
+  src/prompt.ts                  # template selection/rendering (locale + variants)
   src/git.ts, src/github.ts      # git + gh wrappers
   src/agents/{types,pi,registry}.ts
   test/                          # node:test suite (runs in CI)
 eval/tasks/                      # frozen evaluation tasks (hidden tests)
 docs/learnings.md                # curated context injected into TASK.md
-scripts/                         # dev-run.sh, create-labels.sh
+scripts/                         # installer, dev-run, labels, branch protection, App manifest
 ```
 
-Run `npm run check` before committing: it type-checks and runs the `node:test` suite (91 cases,
+Run `npm run check` before committing: it type-checks and runs the `node:test` suite (93 cases,
 including a workflow-env forwarding guard).
 
 ## 参考文档
@@ -196,7 +173,6 @@ including a workflow-env forwarding guard).
 - [端到端 AI 开发工作流（自动化边界 / 人机分工）](docs/ai-workflow.md)
 - [适配不同项目（仓库画像 / 自动探测 / 接入清单）](docs/portability.md)
 - [多 Agent 启用与模型配置](docs/agents.md)
-- [实时响应方案（事件驱动 vs 轮询）](docs/realtime.md)
 - [在其它组织中使用 EasyGithub](docs/other-orgs.md)
 
 ## Status & roadmap

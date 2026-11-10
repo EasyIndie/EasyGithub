@@ -101,7 +101,5 @@ DEEPSEEK_API_KEY   # DeepSeek 平台 API Key，三个 Agent 共用
 `bash scripts/dev-run.sh <owner/repo> <issue-number>` 固定使用 `AGENT=pi`。非 Pi Agent 的
 自动安装/配置仅在 CI 中执行，本地运行 `claude` / `codex` 需手动安装并配置对应 CLI。
 
-## 官方参考
-
-- Claude Code 接入（Anthropic 兼容端点）：<https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code>
-- Codex 接入（Responses 端点 / ~/.codex 配置）：<https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex>
+Codex 侧配置（Responses 端点 / `~/.codex/config.toml`）见 DeepSeek 官方文档：
+<https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/codex>

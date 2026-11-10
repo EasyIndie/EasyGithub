@@ -75,11 +75,19 @@ gh run list -R <Org>/<repo> --workflow ai-agent.yml --limit 3
 ### 1. 复制 hub
 Fork `EasyIndie/EasyGithub`，或 `git clone` 后推到自己的组织（public fork → Actions 依然免费）。
 
-### 2. 建 GitHub App 并安装
-在目标组织（Settings → Developer settings → GitHub Apps → New）：
-- **Permissions**：`Issues: Read & write`、`Contents: Read & write`、`Pull requests: Read & write`、`Metadata: Read-only`
-- **Webhook**：取消勾选（用轮询；要做实时见 `docs/realtime.md` 方案 C）
-- 生成 **Private key**，记录 **App ID**
+### 2. 建 GitHub App 并安装（用脚本，别手点）
+
+```bash
+node scripts/ghapp-manifest.mjs --org <TargetOrg> --out .tmp/ghapp --open
+```
+
+脚本走 App Manifest 流程，在**目标组织内**创建私有 App（必须是组织自有 App：别的组织/个人的
+私有 App 无法装到你的组织，公开 App 需要审核），自动写回 `EASYGH_APP_ID_<ORG>` 与
+`EASYGH_APP_PRIVATE_KEY_<ORG>`，并在本地回调页确认。手工创建也行，但要点一样：
+
+- **Permissions**：`Issues: Read & write`、`Contents: Read & write`、`Pull requests: Read & write`、
+  `Actions: Read-only`（看护需要读 workflow runs）、`Metadata: Read-only`
+- **Webhook**：不用勾（触发走轮询；实时化需要外部接收端，暂未实现）
 - **Install** 到目标组织（All repositories）
 
 ### 3. 配置 hub 的 secret / variable
@@ -89,32 +97,25 @@ Fork `EasyIndie/EasyGithub`，或 `git clone` 后推到自己的组织（public 
 | `EASYGH_APP_PRIVATE_KEY` | secret | App 私钥 PEM 全文 |
 | `EASYGH_APP_ID` | variable | App ID |
 | `DEEPSEEK_API_KEY` | secret | 你的 DeepSeek key |
-| `EASYGH_ORG` | variable | 目标组织名（**已参数化**，默认 `EasyIndie`） |
+| `EASYGH_ORGS` | variable | 组织列表（逗号分隔，如 `EasyIndie,OrzMC`）；单组织仍可用 `EASYGH_ORG` |
 | `EASYGH_REPO_FILTER` | variable（可选） | 逗号分隔仓库白名单，如 `Org/a,Org/b` |
 | `EASYGH_MAX_ISSUES` | variable（可选） | 每次运行最多处理几个 Issue（默认 4） |
-| `EASYGH_VERIFY_CMDS` | variable（可选） | JSON map，零文件仓库的验证命令；覆盖 `agent-runner/config/verify.json` |
+| `EASYGH_VERIFY_CMDS` | variable（可选） | JSON map，临时覆盖验证命令（首选画像 `config/repos.json`，其次 `config/verify.json`） |
 
-> **验证命令（零文件目标）**：因为目标仓库没有自己的 variables，App 模式从 **hub** 取验证配置：
-> 提交在 `agent-runner/config/verify.json`（如 `{"Org/repo":{"cmd":"cargo test","timeout_ms":900000}}`），
-> 或用 hub variable `EASYGH_VERIFY_CMDS`（同结构，优先级更高）。
-> 未配置时自动检测：`package.json` 脚本 → `cargo test` → `go test ./...` → `swift test` → 其它（见 `docs/portability.md`）→ 跳过。
-> 推荐把长期配置写进 `agent-runner/config/repos.json`（可 review），`EASYGH_VERIFY_CMDS` 仅作临时覆盖。
-> Mode 2 则在**目标仓库**设 `VERIFY_CMD`（caller 已接好 `vars.VERIFY_CMD`）。
+> **验证命令（零文件目标）**：目标仓库没有自己的 variables，所以验证配置放在 **hub**：
+> 首选 `agent-runner/config/repos.json` 里的画像（`verify`，可 review、优先级最高）；
+> 兼容旧的 `agent-runner/config/verify.json` 与 hub variable `EASYGH_VERIFY_CMDS`（JSON map，临时覆盖）。
+> 都没配时自动探测（`package.json` 脚本 → `cargo test` → `go test ./...` → `swift test` → …），
+> 探测不到就标记"未验证"，不算通过。Mode 2 则在**目标仓库**设 `VERIFY_CMD`。
 >
-> **调优（实测数据，EasyBot Rust workspace）**：一次真实运行中 `cargo test` 耗时
-> 首次 ~1 分钟、修复后重跑 ~2.5 分钟；真正的大头是 AI agent（4~23 分钟）。
-> 所以**默认保留全量 `cargo test`**（覆盖最完整）。只有在确认编译确实成为瓶颈时才收窄：
-> `cargo test -p <crate>`（仅测指定 crate，会漏掉其它 crate/bin 的回归）或
-> `cargo clippy --all-targets -- -D warnings`（静态检查，快但不跑测试）。
-> 大仓也可把 `timeout_ms` 调高（默认 900000 = 15 分钟）。
-> 另外：每次运行都会上传 `ghapp-dispatch-logs` artifact（TASK.md / `pi-*.jsonl` / `verify-*.log`），
-> 排查“第一次为什么没过验证”直接下载即可。
+> 每次运行都会上传 artifact（`ai-issue-<n>/`：`TASK.md`、agent 日志、`verify-*.log`），
+> 排查"第一次为什么没过验证"直接下载即可。
 
 ```bash
 gh secret set EASYGH_APP_PRIVATE_KEY -R <hub>/<repo> < app.private-key.pem
 gh secret set DEEPSEEK_API_KEY -R <hub>/<repo>
 gh variable set EASYGH_APP_ID -R <hub>/<repo> --body "<app-id>"
-gh variable set EASYGH_ORG   -R <hub>/<repo> --body "<TargetOrg>"
+gh variable set EASYGH_ORGS  -R <hub>/<repo> --body "<TargetOrg>"
 ```
 
 ### 4. 触发与验证
@@ -305,7 +306,7 @@ gh api -X PUT repos/OrzMC/<repo>/branches/main/protection/required_status_checks
 [ ] 目标仓库有 admin 权限
 [ ] DeepSeek key 就位
 [ ] 路线 A：安装器已跑 + PR 已合并 + ai 标签可触发
-[ ] 路线 B：App 已建/已装 + 4 个 secret/variable 已配 + EASYGH_ORG 正确
+[ ] 路线 B：App 已建/已装 + 4 个 secret/variable 已配 + EASYGH_ORGS 正确
 [ ] 路线 C：`EASYGH_ORGS` 已设 + App 已装到每个组织 + App 有 `Actions: Read-only`
 [ ] 路线 C：目标仓库已开 `allow_auto_merge` + 0 批准（单人）+ 必需检查
 [ ] 验证：Issue 标签流 ai→ai-running→ai-pr，或 ghapp-scan 日志出现 === Org/repo #N ===

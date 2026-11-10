@@ -17,8 +17,8 @@ name: ghapp-scan
 #   - label `ai`
 #   - marker `easygh-ai` in the title or body, from an OWNER/MEMBER/COLLABORATOR author
 # Poll cadence: EasyGithub is a PUBLIC repo, so Actions here are free/unmetered.
-# */5 gives ~5-minute latency at zero quota cost. For real-time, see docs/realtime.md
-# (event-driven via webhook is still needed for sub-minute response).
+# */5 gives ~5-minute latency at zero quota cost. Sub-minute latency would need an
+# external webhook receiver (not implemented); see docs/usage.md §1 for the modes.
 on:
   schedule:
     - cron: "*/5 * * * *"

@@ -261,5 +261,5 @@ Secrets：`DEEPSEEK_API_KEY`（模型）、`EASYGH_APP_PRIVATE_KEY[_<ORG>]`（Ap
 改动流水线本身时:
 
 - [ ] 只走分支 → PR → 必需检查 → 合并（不要直推 main）
-- [ ] `npm run check`（typecheck + 91 个测试）+ `actionlint`
+- [ ] `npm run check`（typecheck + 93 个测试）+ `actionlint`
 - [ ] 改 `.github/workflows/**` 属于高风险，务必人工复核
