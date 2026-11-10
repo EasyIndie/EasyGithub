@@ -166,13 +166,30 @@ function candidates(): Candidate[] {
   return [...set.values()];
 }
 
+/**
+ * Labels are the source of truth for "this issue is already being/done handled".
+ * An open PR alone is *not*: `ai-decide retry` (or a maintainer re-adding `ai`)
+ * removes `ai-pr` on purpose, and the rerun force-pushes onto the same branch,
+ * which updates the existing PR instead of opening a second one.
+ */
+export function handledByLabels(labels: string[]): boolean {
+  return labels.some((label) => HANDLED.includes(label));
+}
+
 function isHandled(repo: string, number: number): boolean {
+  let labels: string[];
   try {
-    const labels = JSON.parse(gh(["issue", "view", String(number), "-R", repo, "--json", "labels", "--jq", "[.labels[].name]"])) as string[];
-    if (labels.some((l) => HANDLED.includes(l))) return true;
+    labels = JSON.parse(
+      gh(["issue", "view", String(number), "-R", repo, "--json", "labels", "--jq", "[.labels[].name]"]),
+    ) as string[];
   } catch {
     return true; // issue gone / inaccessible -> treat as handled
   }
+  if (handledByLabels(labels)) return true;
+  // Explicitly re-armed (`ai` present, no handled label): reuse the open PR and
+  // let the rerun force-push onto its branch.
+  if (labels.includes("ai")) return false;
+
   const prs = gh(["pr", "list", "-R", repo, "--head", `ai/issue-${number}`, "--state", "open", "--json", "number", "--jq", "length"]).trim();
   return Number(prs) > 0;
 }
