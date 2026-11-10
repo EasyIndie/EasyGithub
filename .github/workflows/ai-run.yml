@@ -85,7 +85,9 @@ jobs:
       - name: Run the agent runner
         env:
           GH_TOKEN: ${{ steps.mint.outputs.token }}
-          GITHUB_REPOSITORY: ${{ inputs.repo }}
+          # GITHUB_REPOSITORY is reserved and cannot be overridden by env:;
+          # the runner reads AI_TARGET_REPO first.
+          AI_TARGET_REPO: ${{ inputs.repo }}
           ISSUE_NUMBER: ${{ inputs.issue }}
           WORK_DIR: ${{ env.WORK_DIR }}
           DEFAULT_BRANCH: ${{ env.DEFAULT_BRANCH }}
@@ -117,7 +119,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ai-run-${{ inputs.repo }}-${{ inputs.issue }}
+          name: ai-run-${{ inputs.issue }}-${{ github.run_id }}
           path: ${{ runner.temp }}/ai-issue-${{ inputs.issue }}
           if-no-files-found: ignore
           retention-days: 7
