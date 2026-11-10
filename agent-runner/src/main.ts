@@ -5,24 +5,11 @@ import type { AgentResult } from "./agents/types.ts";
 import { ensureAgentCli } from "./cli.ts";
 import { agentEnv, withheldSecretNames } from "./env.ts";
 import * as git from "./git.ts";
-import {
-  acquireLock,
-  addLabel,
-  commentFromFile,
-  countRecentAiPrs,
-  createPr,
-  getIssue,
-  hasOpenIncident,
-  listLabels,
-  mergePrAuto,
-  recentHumanComments,
-  releaseLock,
-  removeLabel,
-  type PrInfo,
-} from "./github.ts";
+import type { PrInfo } from "./github.ts";
 import { renderLearnings } from "./learnings.ts";
 import { metricsLine, writeMetrics } from "./metrics.ts";
 import { auditStagedChanges, describeAudit, stageChanges } from "./policy.ts";
+import { resolveProvider } from "./providers/index.ts";
 import { profileFor } from "./profile.ts";
 import { classifyTask, renderTaskMarkdown, type TaskKind } from "./prompt.ts";
 import { assessRisk, autoMergeDecision, parseAutoMergeMode, type RiskAssessment } from "./risk.ts";
@@ -185,6 +172,15 @@ async function main(): Promise<void> {
   const runDir = join(process.env.RUNNER_TEMP ?? ".tmp/runner", `ai-issue-${issueNumber}`);
   mkdirSync(runDir, { recursive: true });
 
+  // All platform calls go through the provider seam (GitHub today; GitLab or
+  // Gitea would implement the same interface).
+  const platform = resolveProvider();
+  const ref = { repo, number: issueNumber };
+  const caps = Object.entries(platform.capabilities)
+    .filter(([, enabled]) => enabled)
+    .map(([name]) => name);
+  log(`provider=${platform.name} capabilities=${caps.join(",") || "(none)"}`);
+
   // Time budget: the job timeout must cover attempts * (agent + verify) plus
   // install/push overhead. Every step below is clamped by the remaining budget
   // so a slow run reports "budget exhausted" instead of being killed mid-flight.
@@ -223,28 +219,28 @@ async function main(): Promise<void> {
   let automergeArmed = false;
 
   const finish = (result: Outcome) => {
-    removeLabel(repo, issueNumber, L.running);
-    if (result === "pr") addLabel(repo, issueNumber, L.pr);
-    else if (result === "failed") addLabel(repo, issueNumber, L.failed);
-    else if (result === "blocked") addLabel(repo, issueNumber, L.needsInput);
-    else if (result === "deferred") addLabel(repo, issueNumber, L.deferred);
-    else addLabel(repo, issueNumber, L.done);
+    platform.issues.removeLabel(ref, L.running);
+    if (result === "pr") platform.issues.addLabel(ref, L.pr);
+    else if (result === "failed") platform.issues.addLabel(ref, L.failed);
+    else if (result === "blocked") platform.issues.addLabel(ref, L.needsInput);
+    else if (result === "deferred") platform.issues.addLabel(ref, L.deferred);
+    else platform.issues.addLabel(ref, L.done);
   };
 
   const postComment = (body: string, name = "comment.md") =>
-    commentFromFile(repo, issueNumber, writeText(join(runDir, name), body));
+    platform.issues.commentFromFile(ref, writeText(join(runDir, name), body));
 
   const retryHint = `如需重试：在工作流 \`ai-decide\` 选择动作 \`retry\`，或移除 \`${L.failed}\`/\`${L.needsInput}\`/\`${L.deferred}\` 标签后重新添加 \`${L.trigger}\`。`;
 
   try {
     // --- claim: labels (fast) + atomic lock (authoritative) -------------------
-    const labels = listLabels(repo, issueNumber);
+    const labels = platform.issues.labels(ref);
     if (HANDLED.some((x) => labels.includes(x))) {
       log(`skip: issue already handled/in-flight (labels: ${labels.join(",")})`);
       return;
     }
 
-    const lockState = acquireLock(repo, issueNumber, { defaultBranch, ttlMs: lockTtlMs });
+    const lockState = platform.locks.acquire(ref, { defaultBranch, ttlMs: lockTtlMs });
     if (lockState === "busy") {
       log("skip: another run holds the claim lock");
       return;
@@ -254,14 +250,14 @@ async function main(): Promise<void> {
       log("warning: claim lock API unavailable (permissions/ruleset); falling back to labels only");
     }
 
-    addLabel(repo, issueNumber, L.running);
-    removeLabel(repo, issueNumber, L.trigger);
+    platform.issues.addLabel(ref, L.running);
+    platform.issues.removeLabel(ref, L.trigger);
     claimed = true;
     log(locked ? "claimed (lock + ai-running set, ai removed)" : "claimed (labels only, ai removed)");
 
     // --- quota: cap how much work one day may spend ---------------------------
     if (maxPrsPerDay > 0) {
-      const recent = countRecentAiPrs(repo, 24);
+      const recent = platform.pulls.countRecent(repo, 24);
       if (recent >= maxPrsPerDay) {
         log(`deferred: ${recent}/${maxPrsPerDay} AI PRs in the last 24h`);
         postComment(
@@ -274,12 +270,12 @@ async function main(): Promise<void> {
     }
 
     // --- context -------------------------------------------------------------
-    const issue = getIssue(repo, issueNumber);
+    const issue = platform.issues.get(ref);
     kind = classifyTask(issue);
     log(`issue: ${issue.title} | kind=${kind} | labels=${issue.labels.join(",") || "(none)"}`);
 
     // H2 replies live in the issue thread; replay them into the task.
-    const humanComments = recentHumanComments(repo, issueNumber);
+    const humanComments = platform.issues.recentHumanComments(ref);
     const humanContext =
       humanComments.length === 0
         ? ""
@@ -517,11 +513,11 @@ async function main(): Promise<void> {
     log(`risk=${risk.level} (${risk.reasons.join("; ")}) files=${changedFiles} lines=${changedLines}`);
 
     if (audit.sensitive.length > 0 || risk.level === "high") {
-      addLabel(repo, issueNumber, L.core);
+      platform.issues.addLabel(ref, L.core);
       log(`flagged ${L.core} (${audit.sensitive.length} sensitive path(s), risk=${risk.level})`);
     }
     if (verifyResult?.tampered) {
-      addLabel(repo, issueNumber, L.verifyChanged);
+      platform.issues.addLabel(ref, L.verifyChanged);
       log(`flagged ${L.verifyChanged}: the check configuration changed during the run`);
     }
 
@@ -559,7 +555,8 @@ async function main(): Promise<void> {
 
     let pr: PrInfo;
     try {
-      pr = createPr(repo, {
+      pr = platform.pulls.create({
+        repo,
         base: defaultBranch,
         head: branch,
         title: `[AI] ${kindPrefix}: #${issueNumber} ${shortTitle}`.slice(0, 110),
@@ -587,13 +584,13 @@ async function main(): Promise<void> {
         : null,
       paths: audit.paths,
     });
-    const incidentOpen = hasOpenIncident(repo);
+    const incidentOpen = platform.incidents.hasOpen(repo);
     if (incidentOpen) log("auto-merge suppressed: open ai-incident (circuit breaker latch)");
     if (decision.allowed && !draft && !incidentOpen) {
-      const armed = mergePrAuto(repo, pr.number);
+      const armed = platform.pulls.armAutoMerge(repo, pr.number);
       automergeArmed = armed.ok;
       if (armed.ok) {
-        addLabel(repo, issueNumber, L.automerge);
+        platform.issues.addLabel(ref, L.automerge);
         log(`auto-merge armed on PR #${pr.number}`);
       } else {
         log(`warning: auto-merge could not be armed: ${armed.detail}`);
@@ -635,7 +632,7 @@ async function main(): Promise<void> {
     git.restoreCredentials(workDir);
     if (locked) {
       try {
-        releaseLock(repo, issueNumber);
+        platform.locks.release(ref);
       } catch (err) {
         log(`warning: failed to release claim lock: ${err instanceof Error ? err.message : err}`);
       }
