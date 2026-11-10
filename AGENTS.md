@@ -14,7 +14,7 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 - `.github/workflows/ai-agent-reusable.yml` + `.github/actions/agent-runner` — reusable cross-repo mode (mode 2).
 - `.github/workflows/ghapp-scan.yml` + `scripts/ghapp-token.mjs` — GitHub-App zero-file mode (mode 3); `ai-run.yml` — one task on a profile-selected runner (self-hosted macOS/Windows).
 - `scripts/` — helper scripts (`dev-run.sh`, `create-labels.sh`, `install-to-repo.sh`).
-- `docs/` — `ai-workflow.md` (end-to-end workflow, risk tiers, human touchpoints), `portability.md` (adapting the pipeline to other projects), `agents.md` (multi-agent + model config), `realtime.md` (event-driven vs polling), `other-orgs.md` (using EasyGithub in other organizations; `ghapp-scan` org is `vars.EASYGH_ORG`).
+- `docs/` — `usage.md` (operator manual: how to file a task, read results, run the five human actions), `ai-workflow.md` (end-to-end workflow, risk tiers, human touchpoints), `portability.md` (adapting the pipeline to other projects), `agents.md` (multi-agent + model config), `realtime.md` (event-driven vs polling), `other-orgs.md` (using EasyGithub in other organizations; `ghapp-scan` org is `vars.EASYGH_ORG`).
 
 ## Checks
 

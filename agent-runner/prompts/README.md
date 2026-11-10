@@ -4,6 +4,7 @@
 prompts/
   bug-fix.md  feature.md  review.md     # en（默认，始终存在）
   zh-cn/                                # 简体中文变体
+  strict/                                # 示例变体：更严的规则（写测试、禁新依赖、禁改公共 API）
   <variant>/                            # 可选：按项目/技术栈定制
     bug-fix.md feature.md review.md
     <locale>/                           # 变体内的语言子目录

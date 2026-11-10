@@ -196,3 +196,28 @@ gh api -X PATCH repos/EasyIndie/EasyGithub/branches/main/protection/required_pul
 
 相关变量：`AI_AUTOMERGE`（默认 off）、`AI_MAX_PRS_PER_DAY`（默认 10）、`AI_REVIEWER`（needs-input 时 cc 的人）、
 `EASYGH_WATCHDOG`（默认 `on`，跨仓库看护开关）、`EASYGH_RETRO_REPOS`（周报覆盖的仓库，逗号分隔）、`AI_AGENT`、`AI_MODEL`、`AI_MAX_ATTEMPTS`、`AGENT_BUDGET_MS`、`PI_TIMEOUT_MS`、`VERIFY_TIMEOUT_MS`。
+
+## 分支新鲜度（自愈）
+
+基线分支在 agent 运行期间前进时，PR 会一出生就 `BLOCKED`/`DIRTY`。现在分三层处理：
+
+1. **推送前**：`git fetch` 基线 → `rebase` → 真的变了就**重新验证**再推；
+2. **推送被拒**（竞态）：自动再 rebase 一次并重试一次；
+3. **开 PR 之后**：`ai-watch` 对 `DIRTY`/`BEHIND` 的 `ai/issue-*` 分支调用 GitHub 的
+   "Update branch"（合并基线进分支），真冲突才交给人。
+
+rebase 会改写已推送的提交，所以推送用 `--force-with-lease`：只覆盖自己的分支，
+别人往同一分支推过东西就会失败而不是被覆盖。
+
+## 提示词变体
+
+`TASK.md` 由 `prompts/<kind>.md` 渲染，解析顺序是
+`<promptsDir>/<locale>/<kind>.md` → `<promptsDir>/<kind>.md` → `<locale>/<kind>.md` → `<kind>.md`。
+语言取 `AI_LOCALE` > 画像 `locale` > `en`，未知语言回退英文；内置 `zh-cn` 与示例变体 `strict`。
+细节见 [`portability.md`](portability.md) 与 `agent-runner/prompts/README.md`。
+
+## 平台抽象
+
+Issue/标签/评论/PR/auto-merge/认领锁/事故闭锁都走 `src/providers/` 的 `Provider` 接口，
+目前只有 GitHub 实现；`EASYGH_PROVIDER` 选实现，未实现的平台会明确报错而不是静默回退。
+GitHub 专属能力（App 安装发现、workflow dispatch、rulesets）通过 `capabilities` 标记。

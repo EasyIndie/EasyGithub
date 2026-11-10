@@ -38,6 +38,65 @@ export interface WatchResult {
 }
 
 const MAX_AGE_DAYS_DEFAULT = 7;
+
+export interface HealablePr {
+  number: number;
+  headRefName: string;
+  mergeStateStatus: string;
+}
+
+export interface HealResult {
+  updated: number[];
+  conflicted: number[];
+  error?: string;
+}
+
+/** Pipeline branches are `ai/issue-<n>`; only those may be rewritten. */
+export function healableAiPrs(prs: HealablePr[]): HealablePr[] {
+  return prs.filter(
+    (pr) => /^ai\/issue-\d+$/.test(pr.headRefName) && (pr.mergeStateStatus === "DIRTY" || pr.mergeStateStatus === "BEHIND"),
+  );
+}
+
+/**
+ * Self-healing for stale AI branches: ask GitHub to merge the base into the PR
+ * head ("Update branch"). This is the manual step a maintainer had to do when
+ * two AI PRs touched the same file and the later one turned DIRTY.
+ *
+ * A 422 means a real conflict, which still needs a human (or `ai-decide retry`).
+ */
+export function healDirtyAiPrs(repo: string): HealResult {
+  const prs = ghJson<HealablePr[]>([
+    "pr",
+    "list",
+    "-R",
+    repo,
+    "--state",
+    "open",
+    "--limit",
+    "20",
+    "--json",
+    "number,headRefName,mergeStateStatus",
+  ]);
+  if (prs === null) return { updated: [], conflicted: [], error: "cannot list pull requests" };
+
+  const updated: number[] = [];
+  const conflicted: number[] = [];
+  for (const pr of healableAiPrs(prs)) {
+    const res = gh(["api", "-X", "PUT", `repos/${repo}/pulls/${pr.number}/update-branch`]);
+    if (res === null) conflicted.push(pr.number);
+    else updated.push(pr.number);
+  }
+  return { updated, conflicted };
+}
+
+function describeHealing(result: HealResult): string {
+  const parts: string[] = [];
+  if (result.updated.length > 0) parts.push(`updated ${result.updated.map((n) => `#${n}`).join(",")}`);
+  if (result.conflicted.length > 0) parts.push(`conflicts ${result.conflicted.map((n) => `#${n}`).join(",")}`);
+  if (result.error) parts.push(result.error);
+  return parts.join("; ");
+}
 const INCIDENT_LABEL = "ai-incident";
 
 function sq(s: string): string {
@@ -258,7 +317,20 @@ function detectReverts(repo: string): string[] {
     .map((pr) => `#${pr.number} ${pr.title}`);
 }
 
+/**
+ * Health check + stale-branch healing. The health part is read-only; healing
+ * rewrites `ai/issue-*` branches only and is skipped under `dryRun`.
+ */
 export function watchRepo(repo: string, opts: { maxAgeDays?: number; dryRun?: boolean } = {}): WatchResult {
+  const result = watchCore(repo, opts);
+  if (opts.dryRun) return result;
+
+  const healing = healDirtyAiPrs(repo);
+  const note = describeHealing(healing);
+  return note ? { ...result, detail: `${result.detail} · ${note}` } : result;
+}
+
+function watchCore(repo: string, opts: { maxAgeDays?: number; dryRun?: boolean } = {}): WatchResult {
   if (!hasPipelineHistory(repo)) return { repo, action: "skipped", detail: "no ai-pr label (pipeline never used here)" };
 
   const info = ghJson<{ default_branch?: string }>(["api", `repos/${repo}`]);

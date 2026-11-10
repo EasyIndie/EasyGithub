@@ -546,7 +546,64 @@ async function main(): Promise<void> {
     log(`committed: ${commitMessage}`);
 
     git.restoreCredentials(workDir);
-    git.pushBranch(workDir, branch);
+
+    // The base branch can move while the agent works (another PR merged). A PR
+    // opened from a stale branch stays BLOCKED/DIRTY, so rebase first and, when
+    // the tree actually changed, verify the rebased tree again before pushing.
+    const reportConflict = (conflicts: string[]) => {
+      const files = conflicts.slice(0, 12).map((f) => `- ${f}`).join("\n") || "- (unknown)";
+      log(`rebase conflict in ${conflicts.length} file(s): ${conflicts.slice(0, 5).join(",")}`);
+      postComment(
+        `⚠️ **基线分支 \`${defaultBranch}\` 在本任务运行期间发生了变更，且与本次改动冲突**\n\n${files}\n\n` +
+          `分支 \`${branch}\` **未推送**，Issue 标记为 \`${L.needsInput}\`。请选择：\n\n` +
+          `- \`ai-decide retry\`：删除分支、在最新基线上重跑（推荐，多数冲突会自动消失）；\n` +
+          `- 人工基于最新 \`${defaultBranch}\` 解决冲突后自行提交。`,
+      );
+      outcome = "blocked";
+    };
+
+    const sync = git.syncWithBase(workDir, defaultBranch);
+    if (sync.warning) log(`warn: ${sync.warning} (pushing without a rebase)`);
+    if (!sync.ok) {
+      reportConflict(sync.conflicts);
+      return;
+    }
+    if (sync.changed) {
+      log(`rebased onto origin/${defaultBranch} — re-running verification on the rebased tree`);
+      const recheck = await runVerify(
+        workDir,
+        verifySpec,
+        Math.min(verifyTimeoutMs, Math.max(30_000, remainingMs() - 30_000)),
+      );
+      verifyResult = recheck;
+      writeText(join(runDir, "verify-rebased.log"), recheck.output);
+      log(`post-rebase verify ok=${recheck.ok} tampered=${recheck.tampered} cmd="${recheck.command || "(none)"}"`);
+      if (!recheck.ok) {
+        postComment(
+          `❌ **基线分支已变更，rebase 后仓库检查不再通过**（\`${recheck.command || "no check"}\`）\n\n` +
+            `\`\`\`\n${redact(recheck.output.slice(-5000))}\n\`\`\`\n\n` +
+            `分支 \`${branch}\` 未推送。冲突通常意味着基线的新改动与本任务不兼容，需要人工判断。${retryHint}`,
+        );
+        outcome = "failed";
+        process.exitCode = 1;
+        return;
+      }
+    }
+
+    try {
+      git.pushBranch(workDir, branch, { force: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/rejected|non-fast-forward|fetch first|stale info/i.test(message)) throw err;
+      // Race window: the base moved between the rebase and the push.
+      log("push rejected — base moved again, rebasing once more and retrying");
+      const retry = git.syncWithBase(workDir, defaultBranch);
+      if (!retry.ok) {
+        reportConflict(retry.conflicts);
+        return;
+      }
+      git.pushBranch(workDir, branch, { force: true });
+    }
     log("pushed");
 
     const summary = redact(agentResult.summary || "(agent did not provide a summary; review the diff)");

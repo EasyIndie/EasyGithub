@@ -176,7 +176,9 @@ agent-runner/                    # Agent Runner (TypeScript, zero runtime deps)
   prompts/                       # task templates (bug-fix / feature / review)
   src/main.ts                    # orchestration
   src/risk.ts                    # risk tiers + auto-merge predicate
-  src/profile.ts                 # per-repo profile (verify/paths/agent/model)
+  src/profile.ts                 # per-repo profile (verify/paths/agent/model/runsOn/locale)
+  src/providers/                 # platform seam (github implemented)
+  src/prompt.ts, prompts/        # task templates (en + zh-cn + per-repo variants)
   src/git.ts, src/github.ts      # git + gh wrappers
   src/agents/{types,pi,registry}.ts
   test/                          # node:test suite (runs in CI)
@@ -185,10 +187,12 @@ docs/learnings.md                # curated context injected into TASK.md
 scripts/                         # dev-run.sh, create-labels.sh
 ```
 
-Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committing. There is no test suite yet.
+Run `npm run check` before committing: it type-checks and runs the `node:test` suite (91 cases,
+including a workflow-env forwarding guard).
 
 ## 参考文档
 
+- **[使用手册：怎么提任务、怎么读结果、出问题怎么办](docs/usage.md)** ← 从这里开始
 - [端到端 AI 开发工作流（自动化边界 / 人机分工）](docs/ai-workflow.md)
 - [适配不同项目（仓库画像 / 自动探测 / 接入清单）](docs/portability.md)
 - [多 Agent 启用与模型配置](docs/agents.md)
@@ -204,6 +208,11 @@ Run `npm run check` (one-shot equivalent of `npm run typecheck`) before committi
   3. rules in `agent-runner/config/agents.json`, 4. default `pi`. Activated with the same
   verification/retry loop. Pi is E2E-verified; claude/codex adapters need their CLIs + keys in the
   Actions environment (`claude` + `ANTHROPIC_API_KEY`/`CLAUDE_MODEL`, `codex` + `OPENAI_API_KEY`/`CODEX_MODEL`).
+- **V0.5 (done):** portability — per-repo profiles (`config/repos.json`), `verifyContainer`,
+  per-profile `runsOn` (self-hosted/macOS/Windows via `ai-run.yml`), platform provider seam
+  (`src/providers/`, GitHub only for now), prompt locales/variants (`AI_LOCALE`, `prompts/zh-cn`,
+  `prompts/strict`), and self-healing branches (rebase before push; `ai-watch` updates stale
+  `ai/issue-*` PRs).
 - **V0.3/V0.4:** PR-CI failure feedback for human PRs (`ci.yml` already runs `npm run check` on
   every PR); GitHub App webhooks, queue/task store, long-running server.
 

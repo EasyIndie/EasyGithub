@@ -71,6 +71,26 @@
 - `ghapp-scan` 增加 `actions: write`（仅用于 dispatch；App token 无法 dispatch hub 工作流）。
 - 无匹配 runner 时任务保持排队（不静默回退 ubuntu），文档给出取消/补 runner 的指引。
 
+### Added (self-healing branches)
+
+- 推送前 `git fetch` 基线 + rebase：基线在运行期间前进时不再产出 `DIRTY` PR；rebase 变了就重新验证。
+- 推送被拒（竞态）自动 rebase 并重试一次；推送改用 `--force-with-lease`（只覆盖自己的分支）。
+- 真冲突：abort rebase、列出冲突文件、Issue 打 `ai-needs-input`（`retry` 可在最新基线上重做）。
+- `ai-watch` 自愈：对 `DIRTY`/`BEHIND` 的 `ai/issue-*` 分支自动 "Update branch"，真冲突才交给人。
+- 测试：`test/git.test.ts`（真实 bare remote：无变化 / rebase / 冲突 abort / fetch 失败 / force-push）、
+  `test/watch.test.ts`（只挑 `ai/issue-<n>` 且过期/冲突的 PR）。
+
+### Added (docs)
+
+- `docs/usage.md`：使用手册（三种运行方式、怎么写 Issue、状态机、风险分级、五种人工动作、配置速查、故障排查、安全边界）。
+- `README.md` 增加"从这里开始"入口，测试数量与目录结构更新。
+
+### Added (workflow guard)
+
+- `test/env-forwarding.test.ts`：workflow 必须转发每一个 hub 配置变量，并反向检查变量表不腐烂。
+  顺带修掉两处真实缺口：`EASYGH_PROVIDER`（三个 workflow 全缺）、`AI_MAX_ATTEMPTS`（`ghapp-scan` 缺）。
+- `prompts/strict/`：示例变体（强制测试、禁新依赖、禁改公共 API），文档说明如何按项目定制。
+
 ### Added (prompt i18n)
 
 - `AI_LOCALE`（环境/仓库变量）+ 画像 `locale`：渲染对应语言的 `TASK.md`，未知语言回退英文。

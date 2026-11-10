@@ -102,6 +102,21 @@ describe("renderTaskMarkdown", () => {
     }
   });
 
+  it("resolves a repository variant before the shared templates", () => {
+    for (const kind of TASK_KINDS) {
+      assert.equal(loadTemplate(kind, { promptsDir: "strict" }).label, `strict/${kind}.md`);
+      assert.equal(loadTemplate(kind, { promptsDir: "strict", locale: "zh-cn" }).label, `strict/${kind}.md`);
+    }
+    const token = /\{\{[a-z_]+\}\}/g;
+    for (const kind of TASK_KINDS) {
+      const variant = readFileSync(new URL(`strict/${kind}.md`, promptsRoot), "utf8");
+      for (const required of ["{{repo}}", "{{issue_number}}", "{{body}}"]) {
+        assert.ok(variant.includes(required), `strict/${kind}.md is missing ${required}`);
+      }
+      assert.ok((variant.match(token) ?? []).length > 0);
+    }
+  });
+
   it("renders the requested language", () => {
     assert.ok(renderTaskMarkdown("feature", meta, "BODY", { locale: "zh-cn" }).includes("工作规则"));
     assert.ok(renderTaskMarkdown("feature", meta, "BODY").includes("Working rules"));
