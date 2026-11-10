@@ -11,7 +11,15 @@ import { metricsLine, writeMetrics } from "./metrics.ts";
 import { auditStagedChanges, describeAudit, stageChanges } from "./policy.ts";
 import { resolveProvider } from "./providers/index.ts";
 import { profileFor } from "./profile.ts";
-import { classifyTask, renderTaskMarkdown, type TaskKind } from "./prompt.ts";
+import {
+  classifyTask,
+  DEFAULT_LOCALE,
+  loadTemplate,
+  normalizeLocale,
+  normalizePromptsDir,
+  renderTaskMarkdown,
+  type TaskKind,
+} from "./prompt.ts";
 import { assessRisk, autoMergeDecision, parseAutoMergeMode, type RiskAssessment } from "./risk.ts";
 import { routeAgent } from "./router.ts";
 import { captureVerifySpec, runVerify, type VerifyResult } from "./verify.ts";
@@ -274,6 +282,16 @@ async function main(): Promise<void> {
     kind = classifyTask(issue);
     log(`issue: ${issue.title} | kind=${kind} | labels=${issue.labels.join(",") || "(none)"}`);
 
+    // --- prompt variant: env > profile > default language ---------------------
+    const localeRaw = process.env.AI_LOCALE?.trim() || profile.locale;
+    const locale = normalizeLocale(localeRaw) ?? DEFAULT_LOCALE;
+    if (localeRaw && normalizeLocale(localeRaw) === undefined) {
+      log(`prompt: ignoring invalid locale "${localeRaw}", using ${DEFAULT_LOCALE}`);
+    }
+    const promptsDir = normalizePromptsDir(process.env.EASYGH_PROMPTS_DIR?.trim() || profile.promptsDir);
+    const templateOptions = { locale, ...(promptsDir ? { promptsDir } : {}) };
+    log(`prompt: ${loadTemplate(kind, templateOptions).label}`);
+
     // H2 replies live in the issue thread; replay them into the task.
     const humanComments = platform.issues.recentHumanComments(ref);
     const humanContext =
@@ -359,7 +377,7 @@ async function main(): Promise<void> {
       );
 
       const bodyWithContext = (attempt === 1 ? issueBody : issueBody + retryContext(lastVerify, attempt - 1)) + learnings;
-      const taskMd = await renderTaskMarkdown(kind, meta, bodyWithContext);
+      const taskMd = renderTaskMarkdown(kind, meta, bodyWithContext, templateOptions);
       const taskFile = writeText(join(runDir, "TASK.md"), taskMd);
       const logFile = join(runDir, `pi-${attempt}.jsonl`);
 

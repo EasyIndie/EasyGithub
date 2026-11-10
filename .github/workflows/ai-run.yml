@@ -97,6 +97,8 @@ jobs:
           THINKING: ${{ vars.AI_THINKING || '' }}
           AI_MAX_ATTEMPTS: ${{ vars.AI_MAX_ATTEMPTS || '3' }}
           AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
+          AI_LOCALE: ${{ vars.AI_LOCALE || '' }}
+          EASYGH_PROMPTS_DIR: ${{ vars.EASYGH_PROMPTS_DIR || '' }}
           AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
           AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
           AGENT_BUDGET_MS: "4500000"

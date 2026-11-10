@@ -5,7 +5,7 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 ## Layout
 
 - `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`; cross-repo dispatcher: `agent-runner/src/dispatcher.ts`. Guardrails: `src/verify.ts` (frozen gate), `src/policy.ts` (path/secret audit), `src/risk.ts` (risk tiers + auto-merge), `src/profile.ts` (per-repo profile), `src/env.ts` (agent env allow-list). Providers: `src/providers/` (platform seam; GitHub implemented, others must implement `Provider` and register). Support tools: `src/eval.ts` (frozen tasks), `src/retro.ts` (weekly report), `src/watch.ts` (cross-repo post-merge watchdog), `src/metrics.ts`, `src/learnings.ts`.
-- `agent-runner/prompts/` — task templates rendered by the runner (bug-fix / feature / review).
+- `agent-runner/prompts/` — task templates rendered by the runner (bug-fix / feature / review); `zh-cn/` is the built-in translation, per-repo variants are selected with `promptsDir`/`locale` (`AI_LOCALE`). See `prompts/README.md`.
 - `agent-runner/config/agents.json` — agent routing rules.
 - `agent-runner/config/repos.json` — per-repository profile (verify commands, protected/blocked paths, dependency manifests, learnings file, default agent/model); see `docs/portability.md`. Legacy `config/verify.json` and the `EASYGH_VERIFY_CMDS` variable still override it.
 - `eval/tasks/` — frozen evaluation tasks (repo + commit + issue + hidden tests) used by `src/eval.ts`.

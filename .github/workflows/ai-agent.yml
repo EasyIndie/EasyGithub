@@ -56,6 +56,8 @@ jobs:
           AI_MAX_ATTEMPTS: ${{ vars.AI_MAX_ATTEMPTS || '3' }}
           # Delivery automation: off | probation | on (default off = humans merge).
           AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
+          AI_LOCALE: ${{ vars.AI_LOCALE || '' }}
+          EASYGH_PROMPTS_DIR: ${{ vars.EASYGH_PROMPTS_DIR || '' }}
           AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
           # cc'd when the agent needs a decision (ai-needs-input).
           AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { normalizeLocale, normalizePromptsDir } from "./prompt.ts";
 
 /**
  * Per-repository profile: the project-specific knobs that used to be hardcoded
@@ -44,6 +45,10 @@ export interface RepoProfile {
   dependencyFiles?: string[];
   /** repository knowledge injected into TASK.md */
   learningsFile?: string;
+  /** language of the rendered prompt (AI_LOCALE > locale > en) */
+  locale?: string;
+  /** prompt variant directory under agent-runner/prompts/ (e.g. "swift") */
+  promptsDir?: string;
   agent?: string;
   model?: string;
   maxAttempts?: number;
@@ -93,7 +98,7 @@ const LIST_KEYS = [
   "ignoredPaths",
   "dependencyFiles",
 ] as const;
-const STRING_KEYS = ["learningsFile", "agent", "model", "verifyContainer"] as const;
+const STRING_KEYS = ["learningsFile", "agent", "model", "verifyContainer", "locale", "promptsDir"] as const;
 /** Accepts a string or an array of strings. */
 const RUNNER_KEYS = ["runsOn"] as const;
 const NUMBER_KEYS = ["verifyTimeoutMs", "maxAttempts", "maxPrsPerDay"] as const;
@@ -121,6 +126,14 @@ export function sanitizeProfile(raw: unknown): RepoProfile {
       if (labels.length > 0) out.runsOn = labels;
     }
   }
+  // A locale or prompts dir that could escape the prompts directory is a typo
+  // at best and a path traversal at worst: drop it instead of using it.
+  const locale = normalizeLocale(out.locale);
+  if (locale) out.locale = locale;
+  else delete out.locale;
+  const promptsDir = normalizePromptsDir(out.promptsDir);
+  if (promptsDir) out.promptsDir = promptsDir;
+  else delete out.promptsDir;
   for (const key of NUMBER_KEYS) {
     const value = source[key];
     if (typeof value === "number" && Number.isFinite(value) && value > 0) out[key] = value;

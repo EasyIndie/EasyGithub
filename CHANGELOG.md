@@ -71,6 +71,14 @@
 - `ghapp-scan` 增加 `actions: write`（仅用于 dispatch；App token 无法 dispatch hub 工作流）。
 - 无匹配 runner 时任务保持排队（不静默回退 ubuntu），文档给出取消/补 runner 的指引。
 
+### Added (prompt i18n)
+
+- `AI_LOCALE`（环境/仓库变量）+ 画像 `locale`：渲染对应语言的 `TASK.md`，未知语言回退英文。
+- 画像 `promptsDir` / `EASYGH_PROMPTS_DIR`：按仓库定制模板变体（`prompts/<dir>/<kind>.md` 优先）。
+- 解析顺序：变体+语言 → 变体+默认 → 共享+语言 → 共享+默认；非法 locale/目录（含 `..`）直接丢弃。
+- 内置简体中文模板 `agent-runner/prompts/zh-cn/`，`prompts/README.md` 说明规则。
+- 测试：locale/目录规范化、回退链、中英 token 集合一致性、渲染替换（79 个用例）。
+
 ### Added (provider seam)
 
 - `agent-runner/src/providers/`：平台抽象层（`types.ts` 接口 + capabilities、`github.ts` 唯一实现、`index.ts` 注册表）。
