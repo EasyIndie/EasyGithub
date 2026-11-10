@@ -57,9 +57,18 @@ describe("profile: config/repos.json", () => {
     assert.ok(profile.protectedPaths?.includes("Sources/"));
   });
 
-  it("returns no overrides for unknown repositories", () => {
-    assert.deepEqual(profileFor("nobody/nothing"), {});
-    assert.equal(verifyCommandFromProfile(profileFor("nobody/nothing")), null);
+  it("returns no repository-specific overrides for unknown repositories", () => {
+    const unknown = profileFor("nobody/nothing");
+    // `_defaults` still applies (e.g. the prompt locale), but nothing from a
+    // concrete repository entry leaks in.
+    assert.equal(unknown.verify, undefined);
+    assert.equal(unknown.learningsFile, undefined);
+    assert.equal(verifyCommandFromProfile(unknown), null);
+  });
+
+  it("applies _defaults to every repository", () => {
+    assert.equal(profileFor("nobody/nothing").locale, "zh-cn");
+    assert.equal(profileFor("OrzMC/OrzMCApp").locale, "zh-cn");
   });
 
   it("joins multiple commands with &&", () => {
