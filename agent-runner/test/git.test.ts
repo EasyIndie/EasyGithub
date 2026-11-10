@@ -14,6 +14,12 @@ function sh(cwd: string, ...args: string[]): string {
   return res.stdout.trim();
 }
 
+/** CI runners have no global identity; every fixture repo configures its own. */
+function identify(cwd: string): void {
+  sh(cwd, "config", "user.name", "test");
+  sh(cwd, "config", "user.email", "test@example.com");
+}
+
 function temp(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), `easygh-${prefix}-`));
   dirs.push(dir);
@@ -37,6 +43,7 @@ function fixture(): Fixture {
 
   const seed = temp("seed");
   sh(seed, "init", "--initial-branch=main");
+  identify(seed);
   writeFileSync(join(seed, "a.txt"), "one\n");
   sh(seed, "add", "-A");
   sh(seed, "commit", "-m", "init");
@@ -45,7 +52,9 @@ function fixture(): Fixture {
 
   const parent = temp("work");
   sh(parent, "clone", remote, "work");
-  return { remote, seed, work: join(parent, "work") };
+  const work = join(parent, "work");
+  identify(work);
+  return { remote, seed, work };
 }
 
 function commitFile(cwd: string, file: string, content: string, message: string): void {
