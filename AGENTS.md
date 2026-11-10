@@ -4,7 +4,7 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 
 ## Layout
 
-- `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`; cross-repo dispatcher: `agent-runner/src/dispatcher.ts`. Guardrails: `src/verify.ts` (frozen gate), `src/policy.ts` (path/secret audit), `src/risk.ts` (risk tiers + auto-merge), `src/profile.ts` (per-repo profile), `src/env.ts` (agent env allow-list). Providers: `src/providers/` (platform seam; GitHub implemented, others must implement `Provider` and register). Support tools: `src/eval.ts` (frozen tasks), `src/retro.ts` (weekly report), `src/watch.ts` (cross-repo post-merge watchdog), `src/metrics.ts`, `src/learnings.ts`.
+- `agent-runner/` — TypeScript runner. No runtime dependencies; uses Node built-ins plus the `gh`, `git`, and `pi`/`claude`/`codex` CLIs. Run with Node >= 22.19 (native type stripping). Entry point: `agent-runner/src/main.ts`; cross-repo dispatcher: `agent-runner/src/dispatcher.ts`. Guardrails: `src/verify.ts` (frozen gate), `src/policy.ts` (path/secret audit), `src/risk.ts` (risk tiers + auto-merge), `src/profile.ts` (per-repo profile), `src/env.ts` (agent env allow-list), `src/git.ts` (git wrapper + rebase/credential hiding), `src/prompt.ts` (template selection/rendering). Providers: `src/providers/` (platform seam; GitHub implemented, others must implement `Provider` and register). Support tools: `src/eval.ts` (frozen tasks), `src/retro.ts` (weekly report), `src/watch.ts` (cross-repo post-merge watchdog), `src/metrics.ts`, `src/learnings.ts`.
 - `agent-runner/prompts/` — task templates rendered by the runner (bug-fix / feature / review); `zh-cn/` is the built-in translation, per-repo variants are selected with `promptsDir`/`locale` (`AI_LOCALE`). See `prompts/README.md`.
 - `agent-runner/config/agents.json` — agent routing rules.
 - `agent-runner/config/repos.json` — per-repository profile (verify commands, protected/blocked paths, dependency manifests, learnings file, default agent/model); see `docs/portability.md`. Legacy `config/verify.json` and the `EASYGH_VERIFY_CMDS` variable still override it.
@@ -12,9 +12,9 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
 - `docs/learnings.md` — curated context injected into `TASK.md` (top matching sections).
 - `.github/workflows/ai-agent.yml` — the pipeline workflow (self-host).
 - `.github/workflows/ai-agent-reusable.yml` + `.github/actions/agent-runner` — reusable cross-repo mode (mode 2).
-- `.github/workflows/ghapp-scan.yml` + `scripts/ghapp-token.mjs` — GitHub-App zero-file mode (mode 3); `ai-run.yml` — one task on a profile-selected runner (self-hosted macOS/Windows).
-- `scripts/` — helper scripts (`dev-run.sh`, `create-labels.sh`, `install-to-repo.sh`).
-- `docs/` — `usage.md` (operator manual: how to file a task, read results, run the five human actions), `ai-workflow.md` (end-to-end workflow, risk tiers, human touchpoints), `portability.md` (adapting the pipeline to other projects), `agents.md` (multi-agent + model config), `realtime.md` (event-driven vs polling), `other-orgs.md` (using EasyGithub in other organizations; `ghapp-scan` org is `vars.EASYGH_ORG`).
+- `.github/workflows/ghapp-scan.yml` — GitHub-App zero-file mode (mode 3); `ai-run.yml` — one task on a profile-selected runner (self-hosted macOS/Windows); `ai-decide.yml` — the human interface; `ai-watch.yml` / `ai-retro.yml` — watchdog + weekly report.
+- `scripts/` — `install-to-repo.sh` (modes 1/2), `dev-run.sh` (local dry run), `create-labels.sh`, `enable-ai-gate.sh` (branch protection), `ghapp-manifest.mjs` (create an org-owned App), `ghapp-token.mjs` (installation token).
+- `docs/` — `usage.md` (operator manual), `ai-workflow.md` (end-to-end workflow, risk tiers, human touchpoints), `portability.md` (adapting the pipeline to other projects), `agents.md` (multi-agent + model config), `other-orgs.md` (using EasyGithub in other organizations; org list is `vars.EASYGH_ORGS`).
 
 ## Checks
 
@@ -33,7 +33,7 @@ EasyGithub is an AI software-development pipeline: a GitHub Issue tagged `ai` is
   for credential material.
 - The agent never inherits `GH_TOKEN`/`GITHUB_TOKEN`/`EASYGH_PR_TOKEN` (`src/env.ts`), and git
   push credentials are stripped from the worktree while it runs (`src/git.ts`).
-- There is no automated test suite yet.
+- `npm test` runs the `node:test` suite (93 cases) in `agent-runner/test/`; `npm run check` = typecheck + tests.
 
 ## Working in this repo
 

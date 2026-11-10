@@ -169,6 +169,11 @@ gh api -X PATCH repos/EasyIndie/EasyGithub/branches/main/protection/required_pul
 | agent 环境白名单 | `agent-runner/src/env.ts` |
 | 凭据隐藏/恢复、安全提交 | `agent-runner/src/git.ts` |
 | 原子认领、草稿 PR、auto-merge、配额 | `agent-runner/src/github.ts` |
+| 平台抽象（Issue/PR/锁/事故） | `agent-runner/src/providers/` |
+| 仓库画像 / 验证环境 / runner 选择 | `agent-runner/src/profile.ts` + `config/repos.json` |
+| 提示词选择与渲染（locale/变体） | `agent-runner/src/prompt.ts` + `prompts/` |
+| 跨仓库调度与 runner 交接 | `agent-runner/src/dispatcher.ts` + `.github/workflows/ai-run.yml` |
+| 分支新鲜度（rebase / force-with-lease） | `agent-runner/src/git.ts` |
 | 编排（预算、阻塞、分级、交付） | `agent-runner/src/main.ts` |
 | 指标记录 | `agent-runner/src/metrics.ts` |
 | 经验注入 | `agent-runner/src/learnings.ts` |
@@ -178,24 +183,10 @@ gh api -X PATCH repos/EasyIndie/EasyGithub/branches/main/protection/required_pul
 | 合并后看护（hub + 目标仓库） | `agent-runner/src/watch.ts`（hub 用 CLI，目标仓库由 dispatcher 调用——同一实现） |
 | 周度复盘 | `.github/workflows/ai-retro.yml` |
 
-## 10. 操作手册（人只学这几条）
+## 10. 操作手册
 
-| 我想… | 怎么做 |
-|---|---|
-| 让 AI 做这个 Issue | 打 `ai` 标签（或 App 模式下成员写 `easygh-ai`） |
-| 重试失败/阻塞/延后的任务 | Actions → `ai-decide` → `retry` |
-| 回答 AI 的问题 | 直接评论（成员/协作者），然后 `ai-decide` → `answer`（附上回答内容） |
-| 取消卡住的运行 | `ai-decide` → `cancel`（会删 `ai-running` 与锁） |
-| 记录一次人工例外 | `ai-decide` → `waive`（只留审计，不绕过策略） |
-| 开启/收紧自动合并 | `ai-decide` → `set-automerge`（`off` / `probation` / `on`；当前为 `on`） |
-| 让高风险改动进主干 | 审查草稿 PR → 点 "Ready for review" → 批准合并（code owner 必须） |
-| 回滚出事的 AI 合并 | 等 `ai-incident` Issue 里的 revert PR，批准合并即可 |
-| 看一周发生了什么 | 每周一自动生成的 `retro` Issue（覆盖 `EASYGH_RETRO_REPOS` 里的仓库） |
-| 恢复某个仓库的自动合并 | 关闭该仓库的 `ai-incident` Issue（熔断闭锁随之解除） |
-| 度量一次 prompt/model 改动的收益 | `node agent-runner/src/eval.ts --task <id> --model <m>`，看 `pass@1` |
-
-相关变量：`AI_AUTOMERGE`（默认 off）、`AI_MAX_PRS_PER_DAY`（默认 10）、`AI_REVIEWER`（needs-input 时 cc 的人）、
-`EASYGH_WATCHDOG`（默认 `on`，跨仓库看护开关）、`EASYGH_RETRO_REPOS`（周报覆盖的仓库，逗号分隔）、`AI_AGENT`、`AI_MODEL`、`AI_MAX_ATTEMPTS`、`AGENT_BUDGET_MS`、`PI_TIMEOUT_MS`、`VERIFY_TIMEOUT_MS`。
+日常操作（提任务、读结果、`ai-decide` 五种动作、配置速查、故障排查）全部在
+**[usage.md](usage.md)**，本文不再重复，避免两份文档各自漂移。
 
 ## 分支新鲜度（自愈）
 
