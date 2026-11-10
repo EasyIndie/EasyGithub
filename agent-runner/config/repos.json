@@ -4,7 +4,9 @@
   "repos": {
     "OrzMC/OrzMCApp": {
       "_comment": "Swift/Xcode app. The hub runs on Ubuntu, so verification uses an Ubuntu-friendly script instead of xcodebuild (the macOS matrix still runs in the repo's own CI as a non-required signal).",
-      "verify": ["bash scripts/check-platform-split.sh"],
+      "verify": [
+        "bash scripts/check-platform-split.sh"
+      ],
       "protectedPaths": [
         ".github/",
         "scripts/",
@@ -15,8 +17,15 @@
         "OrzMC.xcodeproj/",
         "products/"
       ],
-      "dependencyFiles": ["Package.swift", "Package.resolved", "OrzMC.xcodeproj/project.pbxproj"],
-      "learningsFile": "docs/iteration-flow.md"
+      "dependencyFiles": [
+        "Package.swift",
+        "Package.resolved",
+        "OrzMC.xcodeproj/project.pbxproj"
+      ],
+      "learningsFile": "docs/iteration-flow.md",
+      "runsOn": [
+        "ubuntu-latest"
+      ]
     }
   }
 }
