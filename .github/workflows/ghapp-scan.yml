@@ -106,6 +106,9 @@ jobs:
           # Cross-repo post-merge watchdog (targets cannot host ai-watch themselves).
           EASYGH_WATCHDOG: ${{ vars.EASYGH_WATCHDOG || 'on' }}
           AI_AUTOMERGE: ${{ vars.AI_AUTOMERGE || 'off' }}
+          # Prompt language / variant (profile locale and promptsDir still apply per repo).
+          AI_LOCALE: ${{ vars.AI_LOCALE || '' }}
+          EASYGH_PROMPTS_DIR: ${{ vars.EASYGH_PROMPTS_DIR || '' }}
           AI_MAX_PRS_PER_DAY: ${{ vars.AI_MAX_PRS_PER_DAY || '10' }}
           AI_REVIEWER: ${{ vars.AI_REVIEWER || '' }}
           # Per-repo verification for zero-file targets (JSON map, hub-side);
