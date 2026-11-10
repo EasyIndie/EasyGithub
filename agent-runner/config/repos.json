@@ -22,10 +22,7 @@
         "Package.resolved",
         "OrzMC.xcodeproj/project.pbxproj"
       ],
-      "learningsFile": "docs/iteration-flow.md",
-      "runsOn": [
-        "ubuntu-latest"
-      ]
+      "learningsFile": "docs/iteration-flow.md"
     }
   }
 }
